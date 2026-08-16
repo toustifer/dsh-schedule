@@ -1,0 +1,11 @@
+# dsh-schedule bundle patch: mounts the schedule plugin into the web profile.
+#
+# Install with:
+#   dsh plugin --profile web add <path-to-this-package>
+#
+# The web-app bundle already mounts fs / tools / webServer — this patch only
+# inserts the schedule engine row.
+
+- insert:
+    - id: dsh-schedule
+      name: 'dsh-schedule'
