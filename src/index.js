@@ -36,7 +36,7 @@ export function apply(ctx) {
   // ---- 模型工具 ----
   ctx.tools.register(makeTool(
     'dailytask_add',
-    '添加一条日程。recurring 为 once(一次性,需要 date)时只出现在那一天;daily(每天)每天都出现;weekly(每周)在 weekdays 指定的星期几出现(1=周一 … 7=周日)。time 为可选时间(HH:MM)。',
+    '添加一条日程。recurring 为 once(一次性,需要 date)时只出现在那一天;daily(每天)每天都出现;weekly(每周)在 weekdays 指定的星期几出现(1=周一 … 7=周日)。time 为可选时间(HH:MM)。carry_over 仅对 once 生效:开启后若到期日未完成,下次查看时自动顺延到当天(历史日期保留)。',
     {
       title: { type: 'string', required: true, description: '日程标题' },
       recurring: { type: 'string', description: '重复方式: once(默认) / daily / weekly' },
@@ -44,6 +44,7 @@ export function apply(ctx) {
       weekdays: { type: 'array', description: 'weekly 时生效:星期几数组,1=周一 … 7=周日,缺省今天' },
       time: { type: 'string', description: '可选时间 HH:MM' },
       note: { type: 'string', description: '可选备注' },
+      carry_over: { type: 'boolean', description: '仅 once 生效:未完成自动顺延到当天(默认 false)' },
     },
     async (args) => store.addItem(args === null ? {} : args),
   ))
@@ -80,7 +81,7 @@ export function apply(ctx) {
 
   ctx.tools.register(makeTool(
     'dailytask_update',
-    '修改一条日程。只更新提供的字段: title / date / recurring / weekdays / time / note。',
+    '修改一条日程。只更新提供的字段: title / date / recurring / weekdays / time / note / carry_over。',
     {
       id: { type: 'string', required: true, description: '日程 id' },
       title: { type: 'string', description: '新标题' },
@@ -89,6 +90,7 @@ export function apply(ctx) {
       weekdays: { type: 'array', description: 'weekly 的星期几 1-7' },
       time: { type: 'string', description: '时间 HH:MM' },
       note: { type: 'string', description: '备注' },
+      carry_over: { type: 'boolean', description: '仅 once 生效:未完成自动顺延(默认 false)' },
     },
     async (args) => {
       if (args === null || typeof args !== 'object') throw new Error('参数无效')

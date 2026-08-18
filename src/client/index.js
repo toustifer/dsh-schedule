@@ -114,7 +114,8 @@ function apply(ctx) {
       const item = data.items[i]
       if (matches(item, dateStr)) {
         const doneMap = data.done && data.done[item.id] ? data.done[item.id] : {}
-        rows.push({ item, done: !!doneMap[dateStr] })
+        const isRollover = item.recurring === 'once' && Array.isArray(item.rolloverDates) && item.rolloverDates.indexOf(dateStr) !== -1
+        rows.push({ item, done: !!doneMap[dateStr], rollover: isRollover })
       }
     }
     rows.sort(sortRows)
@@ -217,6 +218,11 @@ function apply(ctx) {
     if (item.time) meta.push(React.createElement('span', { key: 't', className: 'dsh-sched-pill' }, item.time))
     const rl = recurringLabel(item)
     if (rl) meta.push(React.createElement('span', { key: 'r', className: 'dsh-sched-pill' }, rl))
+    if (item.carryOver && item.recurring === 'once') {
+      meta.push(React.createElement('span', {
+        key: 'co', className: 'dsh-sched-pill', title: '未完成时自动顺延到第二天',
+      }, '顺延'))
+    }
     if (item.note) meta.push(React.createElement('span', { key: 'n', className: 'dsh-sched-note' }, item.note))
     const titleCls = 'dsh-sched-title' + (done ? ' done' : '') + (links.length > 0 ? ' linked' : '')
     return React.createElement('div', { className: 'dsh-sched-row' },
@@ -259,6 +265,7 @@ function apply(ctx) {
     const [recurring, setRecurring] = React.useState('once')
     const [weekdays, setWeekdays] = React.useState([])
     const [time, setTime] = React.useState('')
+    const [carryOver, setCarryOver] = React.useState(false)
     function toggleWd(n) {
       setWeekdays(weekdays.indexOf(n) === -1 ? weekdays.concat([n]).sort() : weekdays.filter((x) => x !== n))
     }
@@ -271,12 +278,14 @@ function apply(ctx) {
         date: date || undefined,
         weekdays: recurring === 'weekly' ? weekdays.slice() : undefined,
         time: time || undefined,
+        carryOver: recurring === 'once' ? carryOver : undefined,
       })
       setTitle('')
       setDate('')
       setRecurring('once')
       setWeekdays([])
       setTime('')
+      setCarryOver(false)
     }
     const wdBtns = []
     for (let i = 1; i <= 7; i++) {
@@ -306,6 +315,17 @@ function apply(ctx) {
       key: 'time', type: 'time', className: 'dsh-sched-input', style: { flex: 'none', width: 104 },
       value: time, onChange: (e) => setTime(e.target.value),
     }))
+    if (recurring === 'once') {
+      opts.push(React.createElement('label', {
+        key: 'carry', style: { display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: 12, cursor: 'pointer' },
+      },
+        React.createElement('input', {
+          type: 'checkbox', checked: carryOver,
+          onChange: (e) => setCarryOver(e.target.checked),
+        }),
+        '未完成自动顺延',
+      ))
+    }
     return React.createElement('div', { className: 'dsh-sched-add' },
       React.createElement('div', { className: 'dsh-sched-add-row' },
         React.createElement('input', {
@@ -348,10 +368,12 @@ function apply(ctx) {
       } else {
         const rows = rowsFor(data, ds)
         const doneCnt = rows.filter((r) => r.done).length
+        const rolloverCnt = rows.filter((r) => r.rollover).length
         const isToday = ds === today
         const isSel = ds === selected
         let sub = ''
         if (rows.length > 0) sub = doneCnt === rows.length ? '✓' + doneCnt : doneCnt + '/' + rows.length
+        if (rolloverCnt > 0) sub += (sub === '' ? '' : ' ') + '顺' + rolloverCnt
         calEls.push(React.createElement('div', {
           key: ds,
           className: 'dsh-sched-cald' + (isToday ? ' today' : '') + (isSel ? ' sel' : ''),

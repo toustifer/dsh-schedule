@@ -7,6 +7,8 @@
  * - items: 日程定义(标题/重复规则/时间/备注/关联会话)
  * - done:  完成记录按 (日程ID, 日期) 永久累积 —— 历史永不删除,
  *          支撑周/月/季度/年度回顾统计。
+ * - once + carryOver: 一次性日程未完成时,下次访问自动顺延到当天;
+ *          rolloverDates 保留它曾经占用过的历史日期。
  *
  * 存储位置:
  *   默认 ~/.dsh/dsh-schedule-data.json;首次加载时自动迁移旧版
@@ -35,17 +37,32 @@ export function localDateStr(d = new Date()) {
   return d.getFullYear() + '-' + pad(d.getMonth() + 1) + '-' + pad(d.getDate())
 }
 
+/** 纯日历加减天数,使用 UTC 避免夏令时影响日期运算。 */
+export function addDays(dateStr, amount) {
+  const parts = dateStr.split('-')
+  const d = new Date(Date.UTC(Number(parts[0]), Number(parts[1]) - 1, Number(parts[2])))
+  d.setUTCDate(d.getUTCDate() + amount)
+  return d.getUTCFullYear() + '-' + pad(d.getUTCMonth() + 1) + '-' + pad(d.getUTCDate())
+}
+
 /** 日期字符串 → ISO 星期几(1=周一 … 7=周日)。 */
 export function isoDay(dateStr) {
   const parts = dateStr.split('-')
-  const d = new Date(Number(parts[0]), Number(parts[1]) - 1, Number(parts[2]))
-  const j = d.getDay()
+  const d = new Date(Date.UTC(Number(parts[0]), Number(parts[1]) - 1, Number(parts[2])))
+  const j = d.getUTCDay()
   return j === 0 ? 7 : j
 }
 
-/** 日程在某天是否出现。 */
+function cleanDate(value) {
+  return typeof value === 'string' && DATE_RE.test(value) ? value : ''
+}
+
+/** 日程在某天是否出现。顺延日也属于该一次性日程的历史展开。 */
 export function matches(item, dateStr) {
-  if (item.recurring === 'once') return item.date === dateStr
+  if (item.recurring === 'once') {
+    if (item.date === dateStr) return true
+    return Array.isArray(item.rolloverDates) && item.rolloverDates.indexOf(dateStr) !== -1
+  }
   if (item.recurring === 'daily') return true
   if (item.recurring === 'weekly') {
     const wd = Array.isArray(item.weekdays) ? item.weekdays : []
@@ -54,8 +71,55 @@ export function matches(item, dateStr) {
   return false
 }
 
-function cleanDate(value) {
-  return typeof value === 'string' && DATE_RE.test(value) ? value : ''
+function isDone(data, itemId, dateStr) {
+  return !!(data && data.done && data.done[itemId] && data.done[itemId][dateStr])
+}
+
+/**
+ * 把已过期且未完成的一次性顺延日程推进到 today。
+ *
+ * 这是惰性持久化:不需要后台定时器,任意读取或写入数据时都会执行一次。
+ * 如果进程隔了多天才启动,中间每一天都会写入 rolloverDates,所以历史月历
+ * 仍能显示每天的未完成记录;当前 date 直接落在今天,不会漏掉任务。
+ */
+export function reconcileCarryOver(data, today = localDateStr()) {
+  const target = cleanDate(today)
+  if (target === '' || data === null || typeof data !== 'object' || !Array.isArray(data.items)) return false
+
+  let changed = false
+  for (const item of data.items) {
+    if (item === null || typeof item !== 'object') continue
+    if (item.recurring !== 'once' || item.carryOver !== true) continue
+    const due = cleanDate(item.date)
+    if (due === '' || due >= target || isDone(data, item.id, due)) continue
+
+    if (!Array.isArray(item.rolloverDates)) {
+      item.rolloverDates = []
+      changed = true
+    }
+    let cursor = due
+    while (cursor < target) {
+      if (item.rolloverDates.indexOf(cursor) === -1) {
+        item.rolloverDates.push(cursor)
+        changed = true
+      }
+      cursor = addDays(cursor, 1)
+    }
+    if (item.date !== target) {
+      item.date = target
+      changed = true
+    }
+  }
+  return changed
+}
+
+function normalizeStoredItem(raw) {
+  const item = raw
+  if (!Array.isArray(item.weekdays)) item.weekdays = []
+  if (!Array.isArray(item.linkedSessions)) item.linkedSessions = []
+  if (!Array.isArray(item.rolloverDates)) item.rolloverDates = []
+  item.carryOver = item.carryOver === true
+  return item
 }
 
 /** 校验并规范化一条新增日程。 */
@@ -64,12 +128,14 @@ export function normalizeItem(args, now = Date.now(), today = localDateStr()) {
   if (title === '') throw new Error('日程标题不能为空')
   const recurring = args.recurring === 'daily' ? 'daily' : args.recurring === 'weekly' ? 'weekly' : 'once'
   let date = cleanDate(args.date)
-  if (recurring === 'once' && date === '') date = today
+  const currentDate = cleanDate(today) || localDateStr()
+  if (recurring === 'once' && date === '') date = currentDate
   let weekdays = Array.isArray(args.weekdays)
     ? args.weekdays.map(Number).filter((n) => n >= 1 && n <= 7)
     : []
-  if (recurring === 'weekly' && weekdays.length === 0) weekdays = [isoDay(today)]
+  if (recurring === 'weekly' && weekdays.length === 0) weekdays = [isoDay(currentDate)]
   const time = typeof args.time === 'string' && TIME_RE.test(args.time) ? args.time : ''
+  const carryOver = recurring === 'once' && (args.carryOver === true || args.carry_over === true)
   return {
     id: 'dt_' + now.toString(36) + '_' + Math.random().toString(36).slice(2, 8),
     title,
@@ -79,6 +145,8 @@ export function normalizeItem(args, now = Date.now(), today = localDateStr()) {
     time,
     note: typeof args.note === 'string' ? args.note : '',
     linkedSessions: [],
+    carryOver,
+    rolloverDates: [],
     createdAt: now,
   }
 }
@@ -115,7 +183,9 @@ export class ScheduleStore {
         const parsed = JSON.parse(text)
         if (parsed !== null && typeof parsed === 'object' && Array.isArray(parsed.items)) {
           this.data = {
-            items: parsed.items,
+            items: parsed.items
+              .filter((item) => item !== null && typeof item === 'object')
+              .map(normalizeStoredItem),
             done: parsed.done && typeof parsed.done === 'object' ? parsed.done : {},
           }
         }
@@ -144,11 +214,31 @@ export class ScheduleStore {
     await fsp.rename(tmp, this.path)
   }
 
-  /** 串行化变更:fn 同步修改 data,随后原子落盘;返回全量数据。 */
-  mutate(fn) {
+  /** 读取时也执行一次惰性顺延并持久化。 */
+  reconcile(today = localDateStr()) {
     const run = this.writeChain.then(async () => {
       const d = await this.load()
+      if (reconcileCarryOver(d, today)) {
+        try {
+          await this.save()
+        } catch (err) {
+          console.error('[dsh-schedule] carry-over save failed (kept in memory)', err)
+        }
+      }
+      return d
+    })
+    this.writeChain = run.then(() => undefined, () => undefined)
+    return run
+  }
+
+  /** 串行化变更:fn 同步修改 data,随后原子落盘;返回全量数据。 */
+  mutate(fn, today = localDateStr()) {
+    const run = this.writeChain.then(async () => {
+      const d = await this.load()
+      // 前后各检查一次:支持新增/修改后立即把过去日期顺延到今天。
+      reconcileCarryOver(d, today)
       fn(d)
+      reconcileCarryOver(d, today)
       try {
         await this.save()
       } catch (err) {
@@ -162,6 +252,7 @@ export class ScheduleStore {
 
   /** 查询某天出现的日程(重复日程按日期展开),附带该日完成状态。 */
   async listForDate(dateStr, today = localDateStr()) {
+    await this.reconcile(today)
     const d = await this.load()
     const date = cleanDate(dateStr) || today
     return d.items
@@ -175,12 +266,15 @@ export class ScheduleStore {
         time: i.time,
         note: i.note,
         linkedSessions: i.linkedSessions,
+        carryOver: i.carryOver === true,
+        rolloverDates: i.rolloverDates,
         done: !!(d.done[i.id] && d.done[i.id][date]),
       }))
   }
 
   /** 全量快照。 */
-  async snapshot() {
+  async snapshot(today = localDateStr()) {
+    await this.reconcile(today)
     const d = await this.load()
     return { items: d.items, done: d.done }
   }
@@ -189,10 +283,10 @@ export class ScheduleStore {
     const item = normalizeItem(args, now, today)
     return this.mutate((d) => {
       d.items.push(item)
-    }).then((result) => ({ item, items: result.items.length }))
+    }, today).then((result) => ({ item, items: result.items.length }))
   }
 
-  updateItem(id, patch) {
+  updateItem(id, patch, today = localDateStr()) {
     return this.mutate((d) => {
       const item = d.items.find((i) => i.id === id)
       if (item === undefined) throw new Error('找不到该日程: ' + id)
@@ -212,16 +306,20 @@ export class ScheduleStore {
         item.time = TIME_RE.test(patch.time) ? patch.time : ''
       }
       if (typeof patch.note === 'string') item.note = patch.note
-    }).then((result) => ({ ok: true, id, items: result.items.length }))
+      const carryArg = patch.carryOver !== undefined ? patch.carryOver : patch.carry_over
+      if (carryArg !== undefined) item.carryOver = item.recurring === 'once' && carryArg === true
+      else if (item.recurring !== 'once') item.carryOver = false
+      if (!Array.isArray(item.rolloverDates)) item.rolloverDates = []
+    }, today).then((result) => ({ ok: true, id, items: result.items.length }))
   }
 
-  removeItem(id) {
+  removeItem(id, today = localDateStr()) {
     return this.mutate((d) => {
       const idx = d.items.findIndex((i) => i.id === id)
       if (idx === -1) throw new Error('找不到该日程: ' + id)
       d.items.splice(idx, 1)
       delete d.done[id]
-    }).then((result) => ({ ok: true, remaining: result.items.length }))
+    }, today).then((result) => ({ ok: true, remaining: result.items.length }))
   }
 
   setDone(id, dateStr, done, today = localDateStr()) {
@@ -231,13 +329,13 @@ export class ScheduleStore {
       if (d.done[id] === undefined) d.done[id] = {}
       if (done) d.done[id][date] = true
       else delete d.done[id][date]
-    }).then((result) => {
+    }, today).then((result) => {
       const item = result.items.find((i) => i.id === id)
       return { ok: true, id, date, done, title: item ? item.title : undefined }
     })
   }
 
-  linkSession(id, sessionId, link = true) {
+  linkSession(id, sessionId, link = true, today = localDateStr()) {
     return this.mutate((d) => {
       const item = d.items.find((i) => i.id === id)
       if (item === undefined) throw new Error('找不到该日程: ' + id)
@@ -250,6 +348,6 @@ export class ScheduleStore {
       } else {
         item.linkedSessions = item.linkedSessions.filter((s) => s !== sessionId)
       }
-    }).then((result) => ({ ok: true, id, sessionId, link }))
+    }, today).then((result) => ({ ok: true, id, sessionId, link }))
   }
 }

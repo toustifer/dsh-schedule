@@ -3,7 +3,7 @@ import assert from 'node:assert/strict'
 import { mkdtempSync, rmSync, writeFileSync, existsSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { ScheduleStore, normalizeItem, matches, isoDay, localDateStr } from '../src/store.js'
+import { ScheduleStore, normalizeItem, matches, isoDay, localDateStr, addDays, reconcileCarryOver } from '../src/store.js'
 
 function makeStore() {
   const dir = mkdtempSync(join(tmpdir(), 'dsh-sched-test-'))
@@ -177,6 +177,94 @@ test('迁移: 旧位置数据自动迁移到新位置并删除旧文件', async 
     // 新文件已写入,旧文件已删除
     assert.ok(existsSync(store.path))
     assert.ok(!existsSync(legacy))
+  } finally {
+    rmSync(dir, { recursive: true, force: true })
+  }
+})
+
+test('carryOver: 默认关闭,once 可开启,recurring 不可', () => {
+  const off = normalizeItem({ title: 'a', date: '2026-08-18' }, 111, '2026-08-17')
+  assert.equal(off.carryOver, false)
+  const on = normalizeItem({ title: 'b', date: '2026-08-18', carryOver: true }, 112, '2026-08-17')
+  assert.equal(on.carryOver, true)
+  // snake_case 也接受
+  const on2 = normalizeItem({ title: 'c', date: '2026-08-18', carry_over: true }, 113, '2026-08-17')
+  assert.equal(on2.carryOver, true)
+  // daily / weekly 强制关闭
+  const daily = normalizeItem({ title: 'd', recurring: 'daily', carryOver: true }, 114, '2026-08-17')
+  assert.equal(daily.carryOver, false)
+  const weekly = normalizeItem({ title: 'e', recurring: 'weekly', carryOver: true }, 115, '2026-08-17')
+  assert.equal(weekly.carryOver, false)
+})
+
+test('carryOver: 过去未完成自动顺延到今天,并记录中间日期', () => {
+  const data = { items: [{ id: 'x1', title: '交报告', recurring: 'once', date: '2026-08-10', carryOver: true, rolloverDates: [] }], done: {} }
+  const changed = reconcileCarryOver(data, '2026-08-14')
+  assert.equal(changed, true)
+  const item = data.items[0]
+  assert.equal(item.date, '2026-08-14')
+  assert.deepEqual(item.rolloverDates, ['2026-08-10', '2026-08-11', '2026-08-12', '2026-08-13'])
+  // 再次执行不应再改变
+  assert.equal(reconcileCarryOver(data, '2026-08-14'), false)
+})
+
+test('carryOver: 过去已完成的不顺延;daily/weekly 不顺延;未开启不顺延', () => {
+  // 已完成:done 里原日期有记录
+  const doneData = { items: [{ id: 'x1', title: 'a', recurring: 'once', date: '2026-08-10', carryOver: true, rolloverDates: [] }], done: { x1: { '2026-08-10': true } } }
+  assert.equal(reconcileCarryOver(doneData, '2026-08-14'), false)
+  assert.equal(doneData.items[0].date, '2026-08-10')
+  // daily
+  const dailyData = { items: [{ id: 'x2', title: 'b', recurring: 'daily', date: '', carryOver: true, rolloverDates: [] }], done: {} }
+  assert.equal(reconcileCarryOver(dailyData, '2026-08-14'), false)
+  // weekly
+  const weeklyData = { items: [{ id: 'x3', title: 'c', recurring: 'weekly', date: '', weekdays: [1], carryOver: true, rolloverDates: [] }], done: {} }
+  assert.equal(reconcileCarryOver(weeklyData, '2026-08-14'), false)
+  // carryOver 关闭
+  const offData = { items: [{ id: 'x4', title: 'd', recurring: 'once', date: '2026-08-10', carryOver: false, rolloverDates: [] }], done: {} }
+  assert.equal(reconcileCarryOver(offData, '2026-08-14'), false)
+  assert.equal(offData.items[0].date, '2026-08-10')
+})
+
+test('carryOver: 通过 store 自动顺延并持久化,listForDate 可见', async () => {
+  const { store, dir } = makeStore()
+  try {
+    const { item } = await store.addItem({ title: '交报告', date: '2026-08-10', carryOver: true }, 111, '2026-08-14')
+    // addItem 时 today=8-14,应直接顺延
+    assert.equal(item.date, '2026-08-14')
+    // 顺延历史日也能列出
+    const hist = await store.listForDate('2026-08-10', '2026-08-14')
+    assert.equal(hist.length, 1)
+    assert.equal(hist[0].rolloverDates.length, 4)
+    // 重建后仍保持
+    const reloaded = new ScheduleStore({ path: store.path, legacyPath: store.legacyPath })
+    const snap = await reloaded.snapshot('2026-08-14')
+    assert.equal(snap.items[0].date, '2026-08-14')
+  } finally {
+    rmSync(dir, { recursive: true, force: true })
+  }
+})
+
+test('carryOver: 多天跨度过后,中间所有未完成日期都在历史里', async () => {
+  const data = { items: [{ id: 'x1', title: '搬砖', recurring: 'once', date: '2026-08-01', carryOver: true, rolloverDates: [] }], done: {} }
+  reconcileCarryOver(data, '2026-08-17')
+  const item = data.items[0]
+  assert.equal(item.date, '2026-08-17')
+  assert.equal(item.rolloverDates.length, 16) // 8-01 .. 8-16
+  assert.deepEqual(item.rolloverDates[0], '2026-08-01')
+  assert.deepEqual(item.rolloverDates[15], '2026-08-16')
+})
+
+test('carryOver: updateItem 可开启/关闭', async () => {
+  const { store, dir } = makeStore()
+  try {
+    const { item } = await store.addItem({ title: '写总结', date: '2026-08-17' }, 111, '2026-08-17')
+    assert.equal(item.carryOver, false)
+    await store.updateItem(item.id, { carryOver: true }, '2026-08-17')
+    let snap = await store.snapshot('2026-08-17')
+    assert.equal(snap.items[0].carryOver, true)
+    await store.updateItem(item.id, { carry_over: false }, '2026-08-17')
+    snap = await store.snapshot('2026-08-17')
+    assert.equal(snap.items[0].carryOver, false)
   } finally {
     rmSync(dir, { recursive: true, force: true })
   }
