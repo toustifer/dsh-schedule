@@ -6,7 +6,7 @@
   "main": "lib/index.js",
   "scripts": {
     "build": "node scripts/build.mjs",
-    "test": "node --test test/"
+    "test": "node --test test/*.test.mjs"
   },
   "peerDependencies": {
     "@deepseek-ai/cordis": "*",
