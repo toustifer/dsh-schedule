@@ -31,6 +31,28 @@ test('logic: matches 与宿主端一致的 once/daily/weekly 展开', () => {
   assert.equal(L.matches(weekly, '2026-08-19'), false)
 })
 
+test('logic: matches 认得顺延历史日期(与宿主端 store 对齐)', () => {
+  // once 日程已从 8-10 顺延到 8-14,rolloverDates 记录了中间每一天
+  const carried = { recurring: 'once', date: '2026-08-14', rolloverDates: ['2026-08-10', '2026-08-11', '2026-08-12', '2026-08-13'] }
+  for (const d of ['2026-08-10', '2026-08-11', '2026-08-12', '2026-08-13', '2026-08-14']) {
+    assert.equal(L.matches(carried, d), true, d + ' 应命中')
+  }
+  assert.equal(L.matches(carried, '2026-08-09'), false)
+  // 无顺延历史的普通 once 不受影响
+  assert.equal(L.matches({ recurring: 'once', date: '2026-08-14' }, '2026-08-10'), false)
+})
+
+test('logic: rowsFor 在顺延日期上给出 rollover 行', () => {
+  const data = {
+    items: [{ id: 'r1', title: '交报告', recurring: 'once', date: '2026-08-14', carryOver: true, rolloverDates: ['2026-08-12'] }],
+    done: {},
+  }
+  const rows = L.rowsFor(data, '2026-08-12')
+  assert.equal(rows.length, 1)
+  assert.equal(rows[0].rollover, true)
+  assert.equal(rows[0].done, false)
+})
+
 test('logic: recurringLabel 文案', () => {
   assert.equal(L.recurringLabel({ recurring: 'daily' }), '每天')
   assert.equal(L.recurringLabel({ recurring: 'weekly', weekdays: [1, 3] }), '每周周一周三')

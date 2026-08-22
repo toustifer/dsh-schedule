@@ -31,13 +31,15 @@ function mondayOf(s) { return addDays(s, -(isoDay(s) - 1)) }
 const WEEKDAY_NAMES = ['周一', '周二', '周三', '周四', '周五', '周六', '周日']
 
 /**
- * 日程在某天是否出现。
- * 注意:当前与宿主端 store.js 的 matches 存在已知差异 —— 宿主端会把
- * once 日程的顺延历史日期(rolloverDates)也算出现,这里暂时不会;
- * 该差异在后续 fix 提交中对齐。
+ * 日程在某天是否出现。与宿主端 store.js 的 matches 保持一致:
+ * once 日程的顺延历史日期(rolloverDates)也算出现,这样历史月历
+ * 才能像 README 宣称的那样显示顺延经过的每一天。
  */
 function matches(item, dateStr) {
-  if (item.recurring === 'once') return item.date === dateStr
+  if (item.recurring === 'once') {
+    if (item.date === dateStr) return true
+    return Array.isArray(item.rolloverDates) && item.rolloverDates.indexOf(dateStr) !== -1
+  }
   if (item.recurring === 'daily') return true
   if (item.recurring === 'weekly') {
     const wd = Array.isArray(item.weekdays) ? item.weekdays : []
