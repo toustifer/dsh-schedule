@@ -273,6 +273,26 @@ test('损坏文件: 结构不对(JSON 合法但 items 缺失)同样按损坏处�
   }
 })
 
+test('损坏文件: 坏文件在旧版迁移位置时按实际位置备份并移除,不反复解析', async () => {
+  const { store, dir } = makeStore()
+  try {
+    // 新位置不存在,旧位置是一个损坏文件
+    writeFileSync(store.legacyPath, 'NOT-JSON-AT-ALL', 'utf8')
+    const snap = await store.snapshot()
+    assert.equal(snap.items.length, 0)
+    // 备份在旧文件旁边,旧文件本身已移除(下次启动不会再次解析失败)
+    const backup = readdirSync(dir).find((f) => f.startsWith('legacy.json.corrupt-'))
+    assert.ok(backup, '应在旧文件位置旁生成备份')
+    assert.equal(readFileSync(join(dir, backup), 'utf8'), 'NOT-JSON-AT-ALL')
+    assert.ok(!existsSync(store.legacyPath), '旧位置的坏文件应被移除')
+    // 再次读取不再产生新备份(自愈)
+    await store.snapshot()
+    assert.equal(readdirSync(dir).filter((f) => f.includes('.corrupt-')).length, 1)
+  } finally {
+    rmSync(dir, { recursive: true, force: true })
+  }
+})
+
 test('迁移: 旧位置数据自动迁移到新位置并删除旧文件', async () => {
   const { store, dir } = makeStore()
   try {

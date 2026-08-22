@@ -207,7 +207,7 @@ export class ScheduleStore {
         try {
           parsed = JSON.parse(text)
         } catch (parseErr) {
-          await this.backupCorrupt(text, parseErr)
+          await this.backupCorrupt(source, text, parseErr)
           this.loaded = true
           return this.data
         }
@@ -220,7 +220,7 @@ export class ScheduleStore {
           }
         } else {
           // 结构不对同样按损坏处理 —— 否则空数据会在下一次保存时覆盖原文件
-          await this.backupCorrupt(text, new Error('数据文件结构不符合预期(items 不是数组)'))
+          await this.backupCorrupt(source, text, new Error('数据文件结构不符合预期(items 不是数组)'))
           this.loaded = true
           return this.data
         }
@@ -243,20 +243,22 @@ export class ScheduleStore {
   }
 
   /**
-   * 数据文件损坏时:先把原文备份到 <path>.corrupt-<时间戳>,再删除原文件,
+   * 数据文件损坏时:先把原文备份到 <源文件>.corrupt-<时间戳>,再删除源文件,
    * 以空数据继续运行。这样后续保存永远不会覆盖丢失用户数据。
+   * 注意按实际读取位置(source 可能是旧版迁移路径)处理,否则损坏的旧文件
+   * 会在每次启动时被重复解析、重复备份且永远无法自愈。
    */
-  async backupCorrupt(text, err) {
+  async backupCorrupt(source, text, err) {
     const stamp = new Date().toISOString().replace(/[:.]/g, '-')
-    const backup = this.path + '.corrupt-' + stamp
+    const backup = source + '.corrupt-' + stamp
     try {
       await fsp.writeFile(backup, text, 'utf8')
-      await fsp.rm(this.path, { force: true })
+      await fsp.rm(source, { force: true })
       console.error('[dsh-schedule] 数据文件无法解析,原文已备份到 ' + backup + '; 以空数据启动', err && err.message)
     } catch (backupErr) {
       // 备份都失败时绝不覆盖原文件:标记保护,save() 直接跳过
       this.protectUnparsedFile = true
-      console.error('[dsh-schedule] 数据文件无法解析且备份失败! 已暂停写盘以防数据丢失,请手动处理:', this.path, err && err.message, backupErr && backupErr.message)
+      console.error('[dsh-schedule] 数据文件无法解析且备份失败! 已暂停写盘以防数据丢失,请手动处理:', source, err && err.message, backupErr && backupErr.message)
     }
   }
 
