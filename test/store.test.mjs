@@ -1,6 +1,6 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { mkdtempSync, rmSync, writeFileSync, existsSync } from 'node:fs'
+import { mkdtempSync, rmSync, writeFileSync, existsSync, readdirSync, readFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { ScheduleStore, normalizeItem, matches, isoDay, localDateStr, addDays, reconcileCarryOver, parseDateStr } from '../src/store.js'
@@ -210,6 +210,43 @@ test('持久化: 重建实例仍能读到数据', async () => {
     assert.equal(snap.items[0].title, '写日报')
     assert.equal(snap.done[item.id]['2026-08-17'], true)
     assert.deepEqual(snap.items[0].linkedSessions, ['sess-1'])
+  } finally {
+    rmSync(dir, { recursive: true, force: true })
+  }
+})
+
+test('损坏文件: 解析失败先备份原文再空数据启动,且不阻塞后续写入', async () => {
+  const { store, dir } = makeStore()
+  try {
+    writeFileSync(store.path, '{ this is not json', 'utf8')
+    // 快照可用(空数据),不再抛"load failed"
+    const snap = await store.snapshot()
+    assert.equal(snap.items.length, 0)
+    // 原文被完整备份
+    const files = readdirSync(dir)
+    const backup = files.find((f) => f.startsWith('data.json.corrupt-'))
+    assert.ok(backup, '应生成 .corrupt- 备份文件')
+    assert.equal(readFileSync(join(dir, backup), 'utf8'), '{ this is not json')
+    assert.ok(!existsSync(store.path), '原坏文件应已移除,避免下次重复解析')
+    // 后续写入正常落盘
+    await store.addItem({ title: '重建' }, 111, '2026-08-17')
+    assert.ok(existsSync(store.path))
+    const reloaded = new ScheduleStore({ path: store.path, legacyPath: store.legacyPath })
+    assert.equal((await reloaded.snapshot()).items[0].title, '重建')
+  } finally {
+    rmSync(dir, { recursive: true, force: true })
+  }
+})
+
+test('损坏文件: 结构不对(JSON 合法但 items 缺失)同样按损坏处理', async () => {
+  const { store, dir } = makeStore()
+  try {
+    writeFileSync(store.path, '{"foo":1}', 'utf8')
+    const snap = await store.snapshot()
+    assert.equal(snap.items.length, 0)
+    const backup = readdirSync(dir).find((f) => f.startsWith('data.json.corrupt-'))
+    assert.ok(backup, '结构异常也应备份')
+    assert.equal(readFileSync(join(dir, backup), 'utf8'), '{"foo":1}')
   } finally {
     rmSync(dir, { recursive: true, force: true })
   }

@@ -182,6 +182,7 @@ export class ScheduleStore {
     this.legacyPath = opts.legacyPath !== undefined ? opts.legacyPath : LEGACY_DATA_PATH
     this.data = { items: [], done: {} }
     this.loaded = false
+    this.protectUnparsedFile = false
     this.writeChain = Promise.resolve()
   }
 
@@ -202,7 +203,14 @@ export class ScheduleStore {
       }
       if (source !== null) {
         const text = await fsp.readFile(source, 'utf8')
-        const parsed = JSON.parse(text)
+        let parsed = null
+        try {
+          parsed = JSON.parse(text)
+        } catch (parseErr) {
+          await this.backupCorrupt(text, parseErr)
+          this.loaded = true
+          return this.data
+        }
         if (parsed !== null && typeof parsed === 'object' && Array.isArray(parsed.items)) {
           this.data = {
             items: parsed.items
@@ -210,6 +218,11 @@ export class ScheduleStore {
               .map(normalizeStoredItem),
             done: parsed.done && typeof parsed.done === 'object' ? parsed.done : {},
           }
+        } else {
+          // 结构不对同样按损坏处理 —— 否则空数据会在下一次保存时覆盖原文件
+          await this.backupCorrupt(text, new Error('数据文件结构不符合预期(items 不是数组)'))
+          this.loaded = true
+          return this.data
         }
         // 旧位置 → 新位置迁移(成功后删除旧文件,避免下次重复读旧数据)
         if (source === this.legacyPath) {
@@ -229,7 +242,29 @@ export class ScheduleStore {
     return this.data
   }
 
+  /**
+   * 数据文件损坏时:先把原文备份到 <path>.corrupt-<时间戳>,再删除原文件,
+   * 以空数据继续运行。这样后续保存永远不会覆盖丢失用户数据。
+   */
+  async backupCorrupt(text, err) {
+    const stamp = new Date().toISOString().replace(/[:.]/g, '-')
+    const backup = this.path + '.corrupt-' + stamp
+    try {
+      await fsp.writeFile(backup, text, 'utf8')
+      await fsp.rm(this.path, { force: true })
+      console.error('[dsh-schedule] 数据文件无法解析,原文已备份到 ' + backup + '; 以空数据启动', err && err.message)
+    } catch (backupErr) {
+      // 备份都失败时绝不覆盖原文件:标记保护,save() 直接跳过
+      this.protectUnparsedFile = true
+      console.error('[dsh-schedule] 数据文件无法解析且备份失败! 已暂停写盘以防数据丢失,请手动处理:', this.path, err && err.message, backupErr && backupErr.message)
+    }
+  }
+
   async save() {
+    if (this.protectUnparsedFile === true) {
+      console.error('[dsh-schedule] 写盘已暂停(数据文件未解析且备份失败),本次变更仅保留在内存')
+      return
+    }
     await fsp.mkdir(join(this.path, '..'), { recursive: true })
     const tmp = this.path + '.tmp'
     await fsp.writeFile(tmp, JSON.stringify({ version: 1, items: this.data.items, done: this.data.done }, null, 2), 'utf8')
