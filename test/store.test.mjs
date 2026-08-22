@@ -162,6 +162,27 @@ test('parseDateStr: 真实日历校验', () => {
   assert.equal(parseDateStr(42), '')
 })
 
+test('add/setDone/listForDate: 全部入口拒绝不存在的日历日期', async () => {
+  const { store, dir } = makeStore()
+  try {
+    // 注意:addItem/setDone 的参数校验在进入 promise 链之前同步抛出,
+    // 断言必须用 async 箭头让抛出变成 rejection。
+    await assert.rejects(async () => store.addItem({ title: 'x', date: '2026-04-31' }, 111, '2026-08-17'), /无效日期/)
+    await assert.rejects(async () => store.addItem({ title: 'y', date: '2026-13-05' }, 112, '2026-08-17'), /无效日期/)
+    const { item } = await store.addItem({ title: '合法' }, 113, '2026-08-17')
+    await assert.rejects(async () => store.setDone(item.id, '2026-02-30', true), /无效日期/)
+    await assert.rejects(async () => store.listForDate('2026-13-01', '2026-08-17'), /无效日期/)
+    // 缺省/空串仍回退到 today,不受影响
+    const rows = await store.listForDate('', '2026-08-17')
+    assert.equal(rows.length, 1)
+    await store.setDone(item.id, undefined, true, '2026-08-17')
+    const snap = await store.snapshot('2026-08-17')
+    assert.equal(snap.done[item.id]['2026-08-17'], true)
+  } finally {
+    rmSync(dir, { recursive: true, force: true })
+  }
+})
+
 test('remove: 删除日程并清理完成记录', async () => {
   const { store, dir } = makeStore()
   try {

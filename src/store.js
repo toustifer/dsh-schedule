@@ -144,7 +144,12 @@ export function normalizeItem(args, now = Date.now(), today = localDateStr()) {
   const title = String(args.title === undefined ? '' : args.title).trim()
   if (title === '') throw new Error('日程标题不能为空')
   const recurring = args.recurring === 'daily' ? 'daily' : args.recurring === 'weekly' ? 'weekly' : 'once'
-  let date = cleanDate(args.date)
+  let date = ''
+  if (args.date !== undefined && args.date !== null && args.date !== '') {
+    // 提供了日期就必须是真实日历日期,否则直接报错(与 updateItem 一致)
+    date = parseDateStr(args.date)
+    if (date === '') throw new Error('无效日期(需要真实的 YYYY-MM-DD): ' + args.date)
+  }
   const currentDate = cleanDate(today) || localDateStr()
   if (recurring === 'once' && date === '') date = currentDate
   let weekdays = Array.isArray(args.weekdays)
@@ -271,7 +276,12 @@ export class ScheduleStore {
   async listForDate(dateStr, today = localDateStr()) {
     await this.reconcile(today)
     const d = await this.load()
-    const date = cleanDate(dateStr) || today
+    let date = ''
+    if (dateStr === undefined || dateStr === null || dateStr === '') date = today
+    else {
+      date = parseDateStr(dateStr)
+      if (date === '') throw new Error('无效日期(需要真实的 YYYY-MM-DD): ' + dateStr)
+    }
     return d.items
       .filter((i) => matches(i, date))
       .map((i) => ({
@@ -346,7 +356,12 @@ export class ScheduleStore {
   }
 
   setDone(id, dateStr, done, today = localDateStr()) {
-    const date = cleanDate(dateStr) || today
+    let date = ''
+    if (dateStr === undefined || dateStr === null || dateStr === '') date = today
+    else {
+      date = parseDateStr(dateStr)
+      if (date === '') throw new Error('无效日期(需要真实的 YYYY-MM-DD): ' + dateStr)
+    }
     return this.mutate((d) => {
       if (!d.items.some((i) => i.id === id)) throw new Error('找不到该日程: ' + id)
       if (d.done[id] === undefined) d.done[id] = {}
