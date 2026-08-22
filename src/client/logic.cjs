@@ -56,17 +56,33 @@ function recurringLabel(item) {
   return ''
 }
 
-/** 排序键:无时间排在有时间之后;同组按标题字典序。 */
-function sortKey(a) {
-  return { time: typeof a.time === 'string' && a.time !== '' ? a.time : null, title: a.title || '' }
+/**
+ * 排序:有时间在前(按分钟数值,兼容 H:MM 与 HH:MM),无时间殿后,
+ * 同组按标题字典序。入参既可以是日程对象也可以是 rowsFor 的包装行
+ * { item, ... } —— 历史实现读错了层级导致排序从未生效,这里统一兼容。
+ */
+function minutesOfDay(t) {
+  const i = t.indexOf(':')
+  if (i === -1) return NaN
+  return Number(t.slice(0, i)) * 60 + Number(t.slice(i + 1))
+}
+
+function unwrapRow(x) {
+  return x !== null && typeof x === 'object' && x.item !== undefined ? x.item : x
 }
 
 function sortRows(a, b) {
-  const ka = sortKey(a)
-  const kb = sortKey(b)
-  if ((ka.time === null) !== (kb.time === null)) return ka.time === null ? 1 : -1
-  if (ka.time !== null && ka.time !== kb.time) return ka.time < kb.time ? -1 : 1
-  return ka.title.localeCompare(kb.title)
+  const ia = unwrapRow(a)
+  const ib = unwrapRow(b)
+  const ta = typeof ia.time === 'string' && ia.time !== ''
+  const tb = typeof ib.time === 'string' && ib.time !== ''
+  if (ta !== tb) return ta ? -1 : 1
+  if (ta) {
+    const ma = minutesOfDay(ia.time)
+    const mb = minutesOfDay(ib.time)
+    if (ma !== mb) return ma < mb ? -1 : 1
+  }
+  return String(ia.title || '').localeCompare(String(ib.title || ''))
 }
 
 /** data.items 中出现在 dateStr 的日程行(附完成/顺延标记),已排序。 */
