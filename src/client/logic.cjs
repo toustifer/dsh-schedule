@@ -1,0 +1,124 @@
+/**
+ * dsh-schedule — 客户端纯逻辑(无 React / 无 DOM / 无 IO)。
+ *
+ * 该文件同时以两种方式使用:
+ *   1. node:test 单元测试直接 require(本文件是 .cjs,不受 package.json
+ *      "type": "module" 影响);
+ *   2. scripts/build.mjs 把它整体内联到 C6 bundle 工厂闭包里,
+ *      位于 src/client/index.js 之前,后者直接引用这些函数名。
+ *
+ * 底部的条件导出只在 Node(测试)环境生效:bundle 里存在 window,
+ * 导出被跳过,不影响工厂返回值。
+ */
+
+function pad(n) { return String(n).padStart(2, '0') }
+
+/** Date → 本地时区 YYYY-MM-DD。 */
+function fmt(d) { return d.getFullYear() + '-' + pad(d.getMonth() + 1) + '-' + pad(d.getDate()) }
+
+function todayStr() { return fmt(new Date()) }
+
+/** YYYY-MM-DD → 本地时区 Date(仅用于展示/星期计算)。 */
+function dateOf(s) { const p = s.split('-'); return new Date(Number(p[0]), Number(p[1]) - 1, Number(p[2])) }
+
+/** 日期字符串 → ISO 星期几(1=周一 … 7=周日)。 */
+function isoDay(s) { const j = dateOf(s).getDay(); return j === 0 ? 7 : j }
+
+function addDays(s, n) { const d = dateOf(s); d.setDate(d.getDate() + n); return fmt(d) }
+
+function mondayOf(s) { return addDays(s, -(isoDay(s) - 1)) }
+
+const WEEKDAY_NAMES = ['周一', '周二', '周三', '周四', '周五', '周六', '周日']
+
+/**
+ * 日程在某天是否出现。
+ * 注意:当前与宿主端 store.js 的 matches 存在已知差异 —— 宿主端会把
+ * once 日程的顺延历史日期(rolloverDates)也算出现,这里暂时不会;
+ * 该差异在后续 fix 提交中对齐。
+ */
+function matches(item, dateStr) {
+  if (item.recurring === 'once') return item.date === dateStr
+  if (item.recurring === 'daily') return true
+  if (item.recurring === 'weekly') {
+    const wd = Array.isArray(item.weekdays) ? item.weekdays : []
+    return wd.indexOf(isoDay(dateStr)) !== -1
+  }
+  return false
+}
+
+function recurringLabel(item) {
+  if (item.recurring === 'daily') return '每天'
+  if (item.recurring === 'weekly') {
+    const wd = Array.isArray(item.weekdays) ? item.weekdays : []
+    if (wd.length === 0) return '每周'
+    return '每周' + wd.map((n) => WEEKDAY_NAMES[n - 1]).join('')
+  }
+  return ''
+}
+
+/** 排序键:无时间排在有时间之后;同组按标题字典序。 */
+function sortKey(a) {
+  return { time: typeof a.time === 'string' && a.time !== '' ? a.time : null, title: a.title || '' }
+}
+
+function sortRows(a, b) {
+  const ka = sortKey(a)
+  const kb = sortKey(b)
+  if ((ka.time === null) !== (kb.time === null)) return ka.time === null ? 1 : -1
+  if (ka.time !== null && ka.time !== kb.time) return ka.time < kb.time ? -1 : 1
+  return ka.title.localeCompare(kb.title)
+}
+
+/** data.items 中出现在 dateStr 的日程行(附完成/顺延标记),已排序。 */
+function rowsFor(data, dateStr) {
+  if (data === null) return []
+  const rows = []
+  for (let i = 0; i < data.items.length; i++) {
+    const item = data.items[i]
+    if (matches(item, dateStr)) {
+      const doneMap = data.done && data.done[item.id] ? data.done[item.id] : {}
+      const isRollover = item.recurring === 'once' && Array.isArray(item.rolloverDates) && item.rolloverDates.indexOf(dateStr) !== -1
+      rows.push({ item, done: !!doneMap[dateStr], rollover: isRollover })
+    }
+  }
+  rows.sort(sortRows)
+  return rows
+}
+
+/** [fromDate, toDate] 闭区间内的完成总数(字符串比较依赖 YYYY-MM-DD 定长格式)。 */
+function completedBetween(data, fromDate, toDate) {
+  let n = 0
+  if (data !== null) {
+    for (const id in data.done) {
+      const m = data.done[id]
+      for (const date in m) {
+        if (m[date] && date >= fromDate && date <= toDate) n++
+      }
+    }
+  }
+  return n
+}
+
+function hasDoneOn(data, date) {
+  if (data === null) return false
+  for (const id in data.done) {
+    if (data.done[id][date]) return true
+  }
+  return false
+}
+
+/** 连续完成天数:今天没做则从昨天起算。 */
+function streakOf(data, today) {
+  let cursor = today
+  if (!hasDoneOn(data, cursor)) cursor = addDays(cursor, -1)
+  let n = 0
+  while (hasDoneOn(data, cursor)) { n++; cursor = addDays(cursor, -1) }
+  return n
+}
+
+if (typeof window === 'undefined' && typeof module !== 'undefined' && module.exports !== undefined) {
+  module.exports = {
+    pad, fmt, todayStr, dateOf, isoDay, addDays, mondayOf, WEEKDAY_NAMES,
+    matches, recurringLabel, sortRows, rowsFor, completedBetween, hasDoneOn, streakOf,
+  }
+}

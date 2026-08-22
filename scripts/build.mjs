@@ -17,9 +17,12 @@ copyFileSync(join(root, 'src', 'index.js'), join(lib, 'index.js'))
 copyFileSync(join(root, 'src', 'store.js'), join(lib, 'store.js'))
 
 // ---- Client (C6 bundle) ----
+// 先内联纯逻辑(logic.cjs,无导出副作用),再内联 UI 半身,
+// 两者共享同一个工厂闭包作用域。
+const logicSrc = readFileSync(join(root, 'src', 'client', 'logic.cjs'), 'utf8')
 const clientSrc = readFileSync(join(root, 'src', 'client', 'index.js'), 'utf8')
 const banner = 'window.__ModuleLoader__.load({ id: "dsh-schedule", factory: (require) => { var module = { exports: {} }; var exports = module.exports;\n'
 const footer = '\nreturn module.exports; } });\n'
-writeFileSync(join(lib, 'client.js'), banner + clientSrc + footer)
+writeFileSync(join(lib, 'client.js'), banner + logicSrc + '\n' + clientSrc + footer)
 
 console.log('[dsh-schedule] build ok -> lib/index.js, lib/store.js, lib/client.js')
