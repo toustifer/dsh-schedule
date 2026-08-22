@@ -3,7 +3,7 @@ import assert from 'node:assert/strict'
 import { mkdtempSync, rmSync, writeFileSync, existsSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { ScheduleStore, normalizeItem, matches, isoDay, localDateStr, addDays, reconcileCarryOver } from '../src/store.js'
+import { ScheduleStore, normalizeItem, matches, isoDay, localDateStr, addDays, reconcileCarryOver, parseDateStr } from '../src/store.js'
 
 function makeStore() {
   const dir = mkdtempSync(join(tmpdir(), 'dsh-sched-test-'))
@@ -128,6 +128,38 @@ test('update: 部分字段更新', async () => {
   } finally {
     rmSync(dir, { recursive: true, force: true })
   }
+})
+
+test('update: 提供了非法日期必须报错而不是静默清空', async () => {
+  const { store, dir } = makeStore()
+  try {
+    const { item } = await store.addItem({ title: '交房租', date: '2026-09-01' }, 111, '2026-08-17')
+    // 形状合法但日历不存在的日期
+    await assert.rejects(() => store.updateItem(item.id, { date: '2026-02-30' }), /无效日期/)
+    // 形状都不对的日期
+    await assert.rejects(() => store.updateItem(item.id, { date: '明天' }), /无效日期/)
+    // 原日程不受影响(没有静默写成空串)
+    const snap = await store.snapshot()
+    assert.equal(snap.items[0].date, '2026-09-01')
+    // 合法新日期正常更新
+    await store.updateItem(item.id, { date: '2026-10-01' })
+    const snap2 = await store.snapshot()
+    assert.equal(snap2.items[0].date, '2026-10-01')
+  } finally {
+    rmSync(dir, { recursive: true, force: true })
+  }
+})
+
+test('parseDateStr: 真实日历校验', () => {
+  assert.equal(parseDateStr('2026-08-17'), '2026-08-17')
+  assert.equal(parseDateStr('2028-02-29'), '2028-02-29') // 闰年放行
+  assert.equal(parseDateStr('2026-02-30'), '')           // 2 月 30 日
+  assert.equal(parseDateStr('2026-13-01'), '')           // 13 月
+  assert.equal(parseDateStr('2026-00-10'), '')           // 0 月
+  assert.equal(parseDateStr('2026-08-00'), '')           // 0 日
+  assert.equal(parseDateStr('2026-4-1'), '')             // 形状不符
+  assert.equal(parseDateStr(undefined), '')
+  assert.equal(parseDateStr(42), '')
 })
 
 test('remove: 删除日程并清理完成记录', async () => {

@@ -57,6 +57,23 @@ function cleanDate(value) {
   return typeof value === 'string' && DATE_RE.test(value) ? value : ''
 }
 
+/**
+ * 校验"真实日历"日期:形状 YYYY-MM-DD 且月/日确实存在(拒绝 2026-02-30、
+ * 2026-13-01 这类会被 UTC 进位悄悄滚走的值),闰年 2-29 正确放行。
+ * 合法返回原字符串,否则返回 ''。
+ */
+export function parseDateStr(value) {
+  const s = cleanDate(value)
+  if (s === '') return ''
+  const p = s.split('-')
+  const y = Number(p[0])
+  const m = Number(p[1])
+  const d = Number(p[2])
+  const dt = new Date(Date.UTC(y, m - 1, d))
+  if (dt.getUTCFullYear() !== y || dt.getUTCMonth() !== m - 1 || dt.getUTCDate() !== d) return ''
+  return s
+}
+
 /** 日程在某天是否出现。顺延日也属于该一次性日程的历史展开。 */
 export function matches(item, dateStr) {
   if (item.recurring === 'once') {
@@ -295,7 +312,13 @@ export class ScheduleStore {
         if (t === '') throw new Error('日程标题不能为空')
         item.title = t
       }
-      if (typeof patch.date === 'string') item.date = cleanDate(patch.date)
+      if (typeof patch.date === 'string') {
+        // 提供了日期就必须是真实日历日期 —— 静默清空会让 once 日程从此
+        // 不再出现在任何一天,比直接报错糟糕得多。
+        const d = parseDateStr(patch.date)
+        if (d === '') throw new Error('无效日期(需要真实的 YYYY-MM-DD): ' + patch.date)
+        item.date = d
+      }
       if (patch.recurring === 'once' || patch.recurring === 'daily' || patch.recurring === 'weekly') {
         item.recurring = patch.recurring
       }
