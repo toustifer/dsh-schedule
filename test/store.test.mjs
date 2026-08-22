@@ -115,6 +115,27 @@ test('linkSession: 关联 / 去重 / 取消', async () => {
   }
 })
 
+test('linkSession: 非字符串 sessionId 归一化为字符串', async () => {
+  const { store, dir } = makeStore()
+  try {
+    const { item } = await store.addItem({ title: '周会' }, 111, '2026-08-17')
+    // HTTP 层可能传数字;必须落成 '123' 而不是 number,否则客户端 indexOf 永远不命中
+    await store.linkSession(item.id, 123, true)
+    let snap = await store.snapshot()
+    assert.deepEqual(snap.items[0].linkedSessions, ['123'])
+    // null/undefined 归一为 '' 并被忽略
+    await store.linkSession(item.id, null, true)
+    snap = await store.snapshot()
+    assert.deepEqual(snap.items[0].linkedSessions, ['123'])
+    // 按归一化后的值取消
+    await store.linkSession(item.id, '123', false)
+    snap = await store.snapshot()
+    assert.deepEqual(snap.items[0].linkedSessions, [])
+  } finally {
+    rmSync(dir, { recursive: true, force: true })
+  }
+})
+
 test('update: 部分字段更新', async () => {
   const { store, dir } = makeStore()
   try {

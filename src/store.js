@@ -409,18 +409,20 @@ export class ScheduleStore {
   }
 
   linkSession(id, sessionId, link = true, today = localDateStr()) {
+    // 归一化为字符串:HTTP/工具层可能传数字或 null,统一成 '' 跳过/按串比较
+    const sid = sessionId === undefined || sessionId === null ? '' : String(sessionId)
     return this.mutate((d) => {
       const item = d.items.find((i) => i.id === id)
       if (item === undefined) throw new Error('找不到该日程: ' + id)
       if (!Array.isArray(item.linkedSessions)) item.linkedSessions = []
       if (link) {
         // 重复关联为 no-op,保持原顺序
-        if (sessionId !== '' && item.linkedSessions.indexOf(sessionId) === -1) {
-          item.linkedSessions.push(sessionId)
+        if (sid !== '' && item.linkedSessions.indexOf(sid) === -1) {
+          item.linkedSessions.push(sid)
         }
       } else {
-        item.linkedSessions = item.linkedSessions.filter((s) => s !== sessionId)
+        item.linkedSessions = item.linkedSessions.filter((s) => s !== sid)
       }
-    }, today).then((result) => ({ ok: true, id, sessionId, link }))
+    }, today).then((result) => ({ ok: true, id, sessionId: sid, link }))
   }
 }

@@ -130,9 +130,22 @@ export function apply(ctx) {
       res.writeHead(status, { 'content-type': 'application/json' })
       res.end(JSON.stringify(body))
     }
+    // 面板/工具的请求都是小 JSON,1MiB 上限足够并防住异常客户端拖垮内存
+    const MAX_BODY_BYTES = 1024 * 1024
     const readBody = (req) => new Promise((resolve, reject) => {
       let data = ''
-      req.on('data', (c) => { data += c })
+      let size = 0
+      req.on('data', (c) => {
+        size += c.length
+        if (size > MAX_BODY_BYTES) {
+          const err = new Error('请求体过大(上限 1MiB)')
+          err.statusCode = 413
+          reject(err)
+          req.destroy()
+          return
+        }
+        data += c
+      })
       req.on('end', () => {
         try { resolve(data ? JSON.parse(data) : {}) } catch (e) { reject(e) }
       })
@@ -143,7 +156,8 @@ export function apply(ctx) {
         kind: 'exact',
         path: '/api/dailytask' + path,
         handler: (req, res) => Promise.resolve(handler(req, res)).catch((e) => {
-          json(res, { error: e instanceof Error ? e.message : String(e) }, 500)
+          const status = e !== null && typeof e === 'object' && e.statusCode ? e.statusCode : 500
+          json(res, { error: e instanceof Error ? e.message : String(e) }, status)
         }),
       })
     }
