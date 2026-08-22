@@ -360,7 +360,14 @@ function apply(ctx) {
     const [view, setView] = React.useState('today')
     const [doneCollapsed, setDoneCollapsed] = React.useState(false)
     const sessionsState = props.useSessions((s) => s)
-    React.useEffect(() => { if (open && store.data === null) refresh() }, [open])
+    // 打开期间每 30 秒拉一次数据:其他会话里的 agent 工具改了日程也能看到;
+    // timerSvc.interval 返回 disposer,关闭面板/组件卸载时自动清理。
+    React.useEffect(() => {
+      if (!open) return undefined
+      refresh()
+      if (timerSvc === undefined || typeof timerSvc.interval !== 'function') return undefined
+      return timerSvc.interval(() => { refresh() }, 30000)
+    }, [open])
     if (!open) return null
     const currentSessionId = sessionsState !== null && sessionsState !== undefined ? sessionsState.current : undefined
     async function onMutate(method, args) {
