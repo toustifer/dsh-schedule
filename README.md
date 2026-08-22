@@ -12,8 +12,9 @@ A local long-term schedule plugin for DeepSeek Harness: top-bar schedule panel (
 - 🔁 **自动顺延(可选)** — 一次性日程可勾选"未完成自动顺延":到期未完成时,下次打开自动顺延到当天,顺延经过的历史日期保留在月历中,完成的当天会显示最终状态
 - 🔗 **日程↔会话链接** — 日程条右侧 ⊕ 一键关联当前会话;输入框右侧 🔗 弹出日程列表;点击日程标题或会话标签跳转到关联会话;一个日程可关联多个会话
 - 🔁 **重复日程** — 一次性 / 每天 / 每周(周一~周日多选)
+- 🔄 **自动刷新** — 面板打开期间每 30 秒同步一次,其他会话里 agent 改的日程也会出现;Esc 或点击面板外空白处关闭
 - 🤖 **Agent 工具** — `dailytask_add/list/set_done/update/delete/link_session`,在任意对话里说"帮我记一条日程"即可
-- 💾 **长期本地存储** — `~/.dsh/dsh-schedule-data.json`,完成历史永不删除,自动迁移旧版数据文件
+- 💾 **长期本地存储** — `~/.dsh/dsh-schedule-data.json`,完成历史永不删除,自动迁移旧版数据文件;文件损坏时先备份为 `.corrupt-时间戳` 再以空数据启动,绝不覆盖原文
 
 ## 安装 Install
 
@@ -50,8 +51,10 @@ dsh web
 
 ```sh
 pnpm build   # 产出 lib/(Host ESM + Client C6 bundle)
-pnpm test    # node --test 单元测试(存储核心)
+pnpm test    # node --test:存储核心 + 客户端纯视图逻辑(src/client/logic.cjs)
 ```
+
+测试跨平台可用(Windows/macOS/Linux);日期校验、顺延展开、排序与统计均有单元覆盖。
 
 ## License
 
