@@ -499,6 +499,27 @@ function apply(ctx) {
   function ScheduleOverlay(props) {
     const linker = useStore(() => store.linker)
     const open = useStore(() => store.open)
+    // Esc 关闭;点击面板/弹层之外的区域也关闭。
+    // 注意把触发按钮自身排除,否则 mousedown 先关、click 再开,面板会闪住不关。
+    React.useEffect(() => {
+      if (!open && !linker) return undefined
+      const inside = '.dsh-sched-panel,.dsh-sched-linker,.dsh-sched-trigger,.dsh-sched-linkbtn'
+      function onKey(e) {
+        if (e.key === 'Escape') { store.setOpen(false); store.setLinker(false) }
+      }
+      function onDown(e) {
+        const t = e.target
+        if (t && typeof t.closest === 'function' && t.closest(inside)) return
+        store.setOpen(false)
+        store.setLinker(false)
+      }
+      document.addEventListener('keydown', onKey)
+      document.addEventListener('mousedown', onDown)
+      return () => {
+        document.removeEventListener('keydown', onKey)
+        document.removeEventListener('mousedown', onDown)
+      }
+    }, [open, linker])
     if (!open && !linker) return null
     return React.createElement('div', { className: 'dsh-sched-overlay-wrap' },
       React.createElement(SchedulePanel, { useSessions: props.useSessions }),
