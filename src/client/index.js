@@ -369,15 +369,15 @@ function apply(ctx) {
       ),
       React.createElement('div', { className: 'dsh-sched-actions' },
         React.createElement('button', { className: 'dsh-sched-abtn primary', onClick: onEdit }, '✎ 编辑'),
-        React.createElement('button', {
-          className: 'dsh-sched-abtn' + (doneToday ? '' : ' primary'),
-          style: doneToday ? {} : { display: 'none' },
-          onClick: () => onMutate('set-done', { id: item.id, date: relDate, done: false }),
-        }, '取消今日完成'),
-        !doneToday ? React.createElement('button', {
-          className: 'dsh-sched-abtn',
-          onClick: () => onMutate('set-done', { id: item.id, date: relDate, done: true }),
-        }, '✓ 标记完成') : null,
+        doneToday
+          ? React.createElement('button', {
+              className: 'dsh-sched-abtn',
+              onClick: () => onMutate('set-done', { id: item.id, date: relDate, done: false }),
+            }, '取消今日完成')
+          : React.createElement('button', {
+              className: 'dsh-sched-abtn',
+              onClick: () => onMutate('set-done', { id: item.id, date: relDate, done: true }),
+            }, '✓ 标记完成'),
         React.createElement('button', {
           className: 'dsh-sched-abtn danger' + (confirmDel ? ' confirm' : ''),
           style: confirmDel ? {} : { marginLeft: 'auto' },
