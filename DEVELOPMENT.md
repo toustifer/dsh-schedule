@@ -92,11 +92,14 @@ slots.inject("conversation.session.header.utilities", () =>
 * `onDragStart`: 将 `item.id` 存入 `dataTransfer`；
 * `onDrop`: 捕获目标象限并触发 `onMutate('update', { id, quadrant })` 异步更新落盘。
 
-### 3. 垂直时间轴排程（Time-blocking & Conflict Detection）
-全面支持现代精力管理工作流：
+### 3. 垂直时间轴排程（Time-blocking, Now-indicator & Smart Drag）
+全面借鉴吸收现代高阶时间流工具（Sorted3 / Sunsama）的生产力精髓：
 * **起止时间块**：支持 `startTime`（如 `09:00`）与 `endTime`（如 `10:30`），且向后兼容 `09:00-10:30` 或单点 `09:00` 格式；
-* **中轴时序与空闲时段**：客户端算法 `computeTimeSchedule` 自动推导中轴排程，并在未重叠的任务空隙自动生成 `☕ 空闲时段` 节点，并支持一键 `+ 排程`；
-* **智能冲突撞车预警**：检测 `startA < endB && startB < endA`，当发生时间撞车时，在卡片上自动高亮红色边框与 `⚠️ 与「...」时段重叠撞车` 告警徽标。
+* **中轴时序与空闲时段**：客户端纯算法 `computeTimeSchedule` 自动推导中轴排程，未重叠的任务空隙自动生成 `☕ 空闲时段` 节点；
+* **📍 Now 当前时间动态游标**：垂直时间轴中轴线上实时贯穿一条流动红细线，带呼吸脉冲红点与当前时间徽标（如 `15:23 现在`），每 60 秒平滑刷新位置；
+* **⚠️ 逾期感知（Overdue）**：针对今天已过排定时间但未完成的任务，自动打上琥珀色指示边框与 `⚠️ 已逾期 Nm` 提示；
+* **🖱️ 待办拖拽吸附（Snap Scheduling）**：待安排时段的任务直接拖动到时间轴上的任意「空闲时段」松手，自动吸附并将起始时间设为该时段起点，一秒完成时间块排程；
+* **⚡ 快捷延期微调（Quick Adjust）**：卡片提供轻量 `+15m` 与 `+30m` 快捷按钮，点击自动向后顺延结束时间，若与后置任务产生时段交叠，自动触发下游冲突高亮警示。
 
 ### 4. 一次性任务惰性自动顺延（Carry-Over）
 对于未完成的一次性日程（`recurring: 'once'` 且 `carry_over: true`）：
@@ -146,7 +149,7 @@ node scripts/build.mjs
 ```bash
 node scripts/build.mjs && node --test test/*.test.mjs
 ```
-*包含 39 项完整单元测试，覆盖时间块解析、冲突检测、时间轴计算、边界日期计算、顺延算法、损坏自愈、字段归一化及打包规范。*
+*包含 49 项完整单元与集成测试，覆盖时间块解析、冲突检测、时间轴计算、Now 动态游标、逾期推导、拖拽吸附、快捷微调、边界日期计算、顺延算法、损坏自愈、字段归一化及打包规范。*
 
 ### 3. DSH 插件热生效与调试
 在开发过程中更新代码后，重新执行 `node scripts/build.mjs`，在 DSH Web 界面刷新页面即可直接验证最新右侧栏与看板渲染效果。
