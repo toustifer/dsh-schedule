@@ -31,3 +31,13 @@ test('built client bundle contains drag-schedule classes and drop target styles'
   assert.ok(clientCode.includes('dsh-sched-tl-dragcard'), 'DOM 应渲染 dragcard 结构')
   assert.ok(clientCode.includes('dataTransfer.effectAllowed = \'move\''), '应设置拖拽 move 效果')
 })
+
+test('built client bundle contains quick-adjust delay buttons and logic', () => {
+  const clientCode = readFileSync(new URL('lib/client.js', root), 'utf8')
+  assert.ok(clientCode.includes('.dsh-sched-tl-adjust-group'), 'CSS 应包含 adjust-group 样式')
+  assert.ok(clientCode.includes('.dsh-sched-tl-adjust-btn'), 'CSS 应包含 adjust-btn 样式')
+  assert.ok(clientCode.includes('+15m'), '卡片应包含 +15m 快捷延期按钮')
+  assert.ok(clientCode.includes('+30m'), '卡片应包含 +30m 快捷延期按钮')
+  assert.ok(clientCode.includes('calculateQuickAdjust'), 'bundle 应包含 calculateQuickAdjust 函数')
+})
+

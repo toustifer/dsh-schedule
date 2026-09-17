@@ -347,3 +347,61 @@ test('logic: 吸附排程后待办从 unscheduled 进入时间轴节点并重新
   assert.equal(nextFree.startTime, '10:45')
   assert.equal(nextFree.endTime, '18:00')
 })
+
+test('logic: calculateQuickAdjust 快捷微调延期计算 (+15m / +30m)', () => {
+  // 1. 原本已有区间 [10:00, 10:30]
+  const rangeBlock = L.parseTimeBlock({ time: '10:00 - 10:30' })
+  assert.equal(rangeBlock.isRange, true)
+  const adj15 = L.calculateQuickAdjust(rangeBlock, 15)
+  assert.equal(adj15.newEndTime, '10:45')
+  assert.equal(adj15.newTimeStr, '10:00-10:45')
+
+  const adj30 = L.calculateQuickAdjust(rangeBlock, 30)
+  assert.equal(adj30.newEndTime, '11:00')
+  assert.equal(adj30.newTimeStr, '10:00-11:00')
+
+  // 2. 原本只有单点时间 14:00 (默认预估 45m 为 14:45)
+  const singleBlock = L.parseTimeBlock({ time: '14:00' })
+  assert.equal(singleBlock.isRange, false)
+  // +15m: 14:00 + (45 + 15) = 15:00
+  const singleAdj15 = L.calculateQuickAdjust(singleBlock, 15)
+  assert.equal(singleAdj15.newEndTime, '15:00')
+  assert.equal(singleAdj15.newTimeStr, '14:00-15:00')
+
+  // +30m: 14:00 + (45 + 30) = 15:15
+  const singleAdj30 = L.calculateQuickAdjust(singleBlock, 30)
+  assert.equal(singleAdj30.newEndTime, '15:15')
+  assert.equal(singleAdj30.newTimeStr, '14:00-15:15')
+
+  // 3. 无时间任务
+  const noneBlock = L.parseTimeBlock({ time: '' })
+  assert.equal(L.calculateQuickAdjust(noneBlock, 15), null)
+})
+
+test('logic: 快捷延期微调后若发生时间交叠，自动触发下游冲突标记', () => {
+  // 任务 A 原本 09:00 - 09:30，任务 B 10:00 - 11:00 (原本不冲突)
+  const tA = { id: 'a', title: '晨会', time: '09:00 - 09:30', recurring: 'daily' }
+  const tB = { id: 'b', title: '技术评审', time: '10:00 - 11:00', recurring: 'daily' }
+  const rowsInitial = [{ item: tA }, { item: tB }]
+  const schedInitial = L.computeTimeSchedule(rowsInitial, { startHour: 8, endHour: 18 })
+  assert.equal(schedInitial.stats.conflictCount, 0)
+
+  // 任务 A 延期 45 分钟，变为 09:00 - 10:15
+  const blockA = L.parseTimeBlock(tA)
+  const adj = L.calculateQuickAdjust(blockA, 45) // 延期 45m 到 10:15
+  assert.equal(adj.newEndTime, '10:15')
+
+  const tAUpdated = { ...tA, time: adj.newTimeStr, endTime: adj.newEndTime }
+  const rowsAfter = [{ item: tAUpdated }, { item: tB }]
+  const schedAfter = L.computeTimeSchedule(rowsAfter, { startHour: 8, endHour: 18 })
+
+  // 产生冲突：A 和 B 双方均被标记冲突状态
+  assert.equal(schedAfter.stats.conflictCount, 2)
+  const nodeA = schedAfter.nodes.find((n) => n.item && n.item.id === 'a')
+  const nodeB = schedAfter.nodes.find((n) => n.item && n.item.id === 'b')
+  assert.ok(nodeA.conflicts.length > 0)
+  assert.equal(nodeA.conflicts[0].id, 'b')
+  assert.ok(nodeB.conflicts.length > 0)
+  assert.equal(nodeB.conflicts[0].id, 'a')
+})
+

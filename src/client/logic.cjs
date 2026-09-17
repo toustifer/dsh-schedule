@@ -490,6 +490,30 @@ function injectNowNode(nodes, nowMinutes) {
   return result
 }
 
+/**
+ * 快捷微调延期计算:
+ * - 若已有结束时间(isRange 为 true)，以原有结束时间为基准增加 deltaMinutes；
+ * - 若原本只有单点起始时间，以预估时长(默认 45 分钟)为基准，将结束时间设为 startTime + (45 + deltaMinutes)；
+ * - 计算出新的 endTime，并格式化为 startTime + '-' + newEndTime。
+ *
+ * @param {object} block - parseTimeBlock 返回的对象
+ * @param {number} deltaMinutes - 顺延分钟数 (例如 15 或 30)
+ * @returns {{ newEndTime: string, newTimeStr: string } | null}
+ */
+function calculateQuickAdjust(block, deltaMinutes) {
+  if (!block || !block.hasTime) return null
+  const baseEnd = block.isRange ? block.endMinutes : (block.startMinutes + 45)
+  const newEndMinutes = Math.min(1439, baseEnd + deltaMinutes)
+  const newEndTime = minutesToTime(newEndMinutes)
+  const newTimeStr = block.startTime + '-' + newEndTime
+  return {
+    endTime: newEndTime,
+    time: newTimeStr,
+    newEndTime,
+    newTimeStr,
+  }
+}
+
 /** 连续完成天数:今天没做则从昨天起算。 */
 function streakOf(data, today) {
   let cursor = today
@@ -505,5 +529,6 @@ if (typeof window === 'undefined' && typeof module !== 'undefined' && module.exp
     matches, recurringLabel, sortRows, rowsFor, completedBetween, hasDoneOn, streakOf,
     minutesToTime, minutesOfDay, parseTimeBlock, formatDuration, detectTimeConflicts, computeTimeSchedule,
     getCurrentMinutes, getOverdueMinutes, formatOverdueText, injectNowNode,
+    calculateQuickAdjust,
   }
 }
