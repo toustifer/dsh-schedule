@@ -972,7 +972,9 @@ function apply(ctx) {
     const [mode, setMode] = React.useState({ type: 'list' })
     const [adding, setAdding] = React.useState(false)
     const [timeFill, setTimeFill] = React.useState(null)
-    const sessionsState = props.useSessions((s) => s)
+    const useSessions = props.useSessions
+    const currentSessionId = useSessions ? useSessions((s) => s ? s.current : undefined) : undefined
+    const sessionsState = useSessions ? useSessions((s) => s ? { byId: s.byId } : undefined) : undefined
     // 本面板只作为 better-sidebar 的侧边卡片渲染;visible 由宿主控制,
     // 面板可见期间每 30 秒拉一次数据(其他会话里 agent 工具改了日程也能看到)。
     const active = props.visible !== false
@@ -982,7 +984,6 @@ function apply(ctx) {
       if (timerSvc === undefined || typeof timerSvc.interval !== 'function') return undefined
       return timerSvc.interval(() => { refresh() }, 30000)
     }, [active])
-    const currentSessionId = sessionsState !== null && sessionsState !== undefined ? sessionsState.current : undefined
     async function onMutate(method, args) {
       try { await call(method, args) } catch (e) { console.error('[dsh-schedule] mutate failed', e) }
     }
@@ -1132,10 +1133,11 @@ function apply(ctx) {
   function ScheduleLinker(props) {
     const linker = useStore(() => store.linker)
     const data = useStore(() => store.data)
-    const sessionsState = props.useSessions((s) => s)
+    const useSessions = props.useSessions
+    const currentSessionId = useSessions ? useSessions((s) => s ? s.current : undefined) : undefined
+    const sessionsState = useSessions ? useSessions((s) => s ? { byId: s.byId } : undefined) : undefined
     React.useEffect(() => { if (linker && store.data === null) refresh() }, [linker])
     if (!linker) return null
-    const currentSessionId = sessionsState !== null && sessionsState !== undefined ? sessionsState.current : undefined
     async function pick(id) {
       try {
         await call('link-session', { id, sessionId: currentSessionId, link: true })
