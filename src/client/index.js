@@ -29,13 +29,12 @@ function injectStyles(css) {
 }
 
 function apply(ctx) {
-  const slots = ctx.get('slots')
+  const slots = ctx.slots
   if (slots === undefined) return
-  const sessionsSvc = ctx.get('sessions')
-  const timerSvc = ctx.get('timer')
-  // better-sidebar 的侧边卡片注册服务(dsh-better-sidebar 提供)。
-  // 已在 inject 中声明为硬依赖:Cordis 会等服务可用后再 apply 本插件。
-  const betterSidebar = ctx.get('betterSidebar')
+  const sessionsSvc = ctx.sessions
+  const timerSvc = ctx.timer
+  const sidebarRight = ctx.sidebarRight
+  const sidebarRightTabs = ctx.sidebarRightTabs
   ctx.effect(() => injectStyles(CSS))
 
   async function api(method, args) {
@@ -85,23 +84,28 @@ function apply(ctx) {
     return value
   }
 
-  // tab 模式下的会话快照:等价于 shell.overlay 的 useSessions prop,
-  // better-sidebar 自身也是这样读的(ctx.sessions.list.getSnapshot())。
-  function useSessionsSnapshot(sctx) {
-    const [snap, setSnap] = React.useState(() => sctx.sessions.list.getSnapshot())
-    React.useEffect(() => {
-      const un = sctx.sessions.list.subscribe(() => setSnap(sctx.sessions.list.getSnapshot()))
-      return un
-    }, [])
-    return snap
+  function titleOf(id) {
+    if (sessionsSvc !== undefined && sessionsSvc.list !== undefined) {
+      try {
+        const snap = sessionsSvc.list.getSnapshot()
+        if (snap !== null && snap !== undefined && snap.byId !== undefined && snap.byId[id] !== undefined) {
+          const row = snap.byId[id]
+          if (row !== undefined) return row.displayTitle || row.title || String(id).slice(0, 8)
+        }
+      } catch (e) {}
+    }
+    return String(id || '').slice(0, 8)
   }
 
-  function titleOf(sessionsState, id) {
-    if (sessionsState !== null && sessionsState !== undefined && sessionsState.byId !== undefined) {
-      const row = sessionsState.byId[id]
-      if (row !== undefined) return row.displayTitle || row.title || id
+  function getActiveSessionId(props) {
+    if (props !== null && props !== undefined && props.sessionId) return props.sessionId
+    if (sessionsSvc !== undefined && sessionsSvc.list !== undefined) {
+      try {
+        const snap = sessionsSvc.list.getSnapshot()
+        if (snap !== null && snap !== undefined && snap.current) return snap.current
+      } catch (e) {}
     }
-    return id
+    return undefined
   }
 
   function openSession(id) {
@@ -137,9 +141,10 @@ function apply(ctx) {
     for (let i = 0; i < links.length; i++) {
       const sid = links[i]
       chips.push(React.createElement('span', {
-        key: sid, className: 'dsh-sched-chip', title: '打开会话: ' + sid,
+        key: sid, className: 'dsh-sched-chip' + (sid === currentSessionId ? ' current' : ''),
+        title: '打开会话: ' + sid,
         onClick: () => openSession(sid),
-      }, titleOf(sessionsState, sid)))
+      }, titleOf(sid)))
     }
     const meta = []
     const qLabels = { q1: '🔴 重要紧急', q2: '🟡 重要不紧急', q3: '🔵 紧急不重要', q4: '🟢 不重要不紧急' }
@@ -356,9 +361,10 @@ function apply(ctx) {
     for (let i = 0; i < links.length; i++) {
       const sid = links[i]
       chips.push(React.createElement('span', {
-        key: sid, className: 'dsh-sched-chip', title: '打开会话: ' + sid,
+        key: sid, className: 'dsh-sched-chip' + (sid === currentSessionId ? ' current' : ''),
+        title: '打开会话: ' + sid,
         onClick: () => openSession(sid),
-      }, titleOf(sessionsState, sid)))
+      }, titleOf(sid)))
     }
     const roChips = []
     for (let i = 0; i < rollovers.length; i++) {
@@ -972,9 +978,7 @@ function apply(ctx) {
     const [mode, setMode] = React.useState({ type: 'list' })
     const [adding, setAdding] = React.useState(false)
     const [timeFill, setTimeFill] = React.useState(null)
-    const useSessions = props.useSessions
-    const currentSessionId = useSessions ? useSessions((s) => s ? s.current : undefined) : undefined
-    const sessionsState = useSessions ? useSessions((s) => s ? { byId: s.byId } : undefined) : undefined
+    const currentSessionId = getActiveSessionId(props)
     // 本面板只作为 better-sidebar 的侧边卡片渲染;visible 由宿主控制,
     // 面板可见期间每 30 秒拉一次数据(其他会话里 agent 工具改了日程也能看到)。
     const active = props.visible !== false
@@ -1133,9 +1137,7 @@ function apply(ctx) {
   function ScheduleLinker(props) {
     const linker = useStore(() => store.linker)
     const data = useStore(() => store.data)
-    const useSessions = props.useSessions
-    const currentSessionId = useSessions ? useSessions((s) => s ? s.current : undefined) : undefined
-    const sessionsState = useSessions ? useSessions((s) => s ? { byId: s.byId } : undefined) : undefined
+    const currentSessionId = getActiveSessionId(props)
     React.useEffect(() => { if (linker && store.data === null) refresh() }, [linker])
     if (!linker) return null
     async function pick(id) {
@@ -1199,7 +1201,7 @@ function apply(ctx) {
       }
     }, [linker])
     if (!linker) return null
-    return React.createElement(ScheduleLinker, { useSessions: props.useSessions })
+    return React.createElement(ScheduleLinker, { sessionId: props && props.sessionId })
   }
 
   // 输入框右侧 🔗:把当前会话关联到日程。
@@ -1211,7 +1213,7 @@ function apply(ctx) {
   // 关联选择弹层(核心 shell.overlay 是 root list slot,始终可用)。
   slots.inject('shell.overlay', () => slots.register(
     { name: 'shell.overlay', id: 'dsh-schedule-linker' },
-    (props) => React.createElement(LinkerOverlay, { useSessions: props.useSessions }),
+    (props) => React.createElement(LinkerOverlay, { sessionId: props && props.sessionId }),
   ))
 
   // 主形态:日程 = better-sidebar 侧边卡片的一个 tab。betterSidebar 已在
@@ -1230,9 +1232,9 @@ function apply(ctx) {
   }
 
   function openScheduleColumn() {
-    if (ctx.sidebarRight === undefined || typeof ctx.sidebarRight.openTab !== "function") return false;
+    if (sidebarRight === undefined || typeof sidebarRight.openTab !== "function") return false;
     try {
-      ctx.sidebarRight.openTab(SCHEDULE_KIND);
+      sidebarRight.openTab(SCHEDULE_KIND);
       return true;
     } catch (e) {
       console.warn("[dsh-schedule] openTab failed:", e);
@@ -1254,27 +1256,16 @@ function apply(ctx) {
     );
   }
 
-  function SchedulePage() {
-    const sessions = ctx.get('sessions')
-    const useSessions = React.useCallback((selector) => {
-      const getSnap = () => (sessions && sessions.list ? sessions.list.getSnapshot() : { current: undefined, byId: {} })
-      const [state, setState] = React.useState(getSnap)
-      React.useEffect(() => {
-        if (!sessions || !sessions.list || typeof sessions.list.subscribe !== 'function') return undefined
-        return sessions.list.subscribe(() => setState(getSnap()))
-      }, [sessions])
-      return selector ? selector(state) : state
-    }, [sessions])
-
+  function SchedulePage(props) {
     return React.createElement(SchedulePanel, {
       visible: true,
-      useSessions,
+      sessionId: props && props.sessionId,
     })
   }
 
   // 1. 注册原生右侧栏 Tab 类型
-  if (ctx.sidebarRightTabs && typeof ctx.sidebarRightTabs.register === "function") {
-    ctx.effect(() => ctx.sidebarRightTabs.register(scheduleTabDefinition()), "dsh-schedule: tab type");
+  if (sidebarRightTabs && typeof sidebarRightTabs.register === "function") {
+    ctx.effect(() => sidebarRightTabs.register(scheduleTabDefinition()), "dsh-schedule: tab type");
   }
 
   // 2. 注册右侧栏内容页
