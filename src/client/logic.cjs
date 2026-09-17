@@ -125,6 +125,243 @@ function hasDoneOn(data, date) {
   return false
 }
 
+function minutesToTime(mins) {
+  if (typeof mins !== 'number' || isNaN(mins)) return ''
+  const clamped = Math.max(0, Math.min(1439, Math.floor(mins)))
+  const h = Math.floor(clamped / 60)
+  const m = clamped % 60
+  return pad(h) + ':' + pad(m)
+}
+
+const TIME_RANGE_RE = /^(\d{1,2}:\d{2})\s*[-~至到]\s*(\d{1,2}:\d{2})$/
+const SINGLE_TIME_RE = /^(\d{1,2}:\d{2})$/
+
+/**
+ * 解析日程的时间块信息:
+ * 优先取 startTime/endTime; 若无则从 time 解析起止区间或单一时间点。
+ * 单一时间点默认预估 45 分钟用于色块跨度与重叠冲突检测。
+ */
+function parseTimeBlock(rawItem) {
+  const item = unwrapRow(rawItem)
+  if (!item || typeof item !== 'object') {
+    return { hasTime: false, startTime: '', endTime: '', startMinutes: null, endMinutes: null, durationMinutes: 0, isRange: false }
+  }
+
+  let s = typeof item.startTime === 'string' && item.startTime ? item.startTime.trim() : ''
+  let e = typeof item.endTime === 'string' && item.endTime ? item.endTime.trim() : ''
+
+  if (!s && typeof item.time === 'string') {
+    const t = item.time.trim()
+    const mRange = t.match(TIME_RANGE_RE)
+    if (mRange) {
+      s = mRange[1]
+      e = mRange[2]
+    } else {
+      const mSingle = t.match(SINGLE_TIME_RE)
+      if (mSingle) s = mSingle[1]
+    }
+  }
+
+  const startM = s ? minutesOfDay(s) : NaN
+  if (isNaN(startM)) {
+    return { hasTime: false, startTime: '', endTime: '', startMinutes: null, endMinutes: null, durationMinutes: 0, isRange: false }
+  }
+
+  let endM = e ? minutesOfDay(e) : NaN
+  let isRange = true
+  if (isNaN(endM) || endM <= startM) {
+    if (isNaN(endM)) {
+      isRange = false
+      endM = Math.min(1440, startM + 45)
+      e = minutesToTime(endM)
+    } else {
+      endM = Math.min(1440, startM + 30)
+      e = minutesToTime(endM)
+    }
+  }
+
+  const durationMinutes = Math.max(1, endM - startM)
+  return {
+    hasTime: true,
+    startTime: s,
+    endTime: e,
+    startMinutes: startM,
+    endMinutes: endM,
+    durationMinutes,
+    isRange,
+  }
+}
+
+/** 格式化持续分钟数为友好的文字:如 90 -> "1小时30分", 45 -> "45分钟" */
+function formatDuration(minutes) {
+  if (!minutes || minutes <= 0) return '0分钟'
+  const h = Math.floor(minutes / 60)
+  const m = minutes % 60
+  if (h > 0 && m > 0) return h + '小时' + m + '分'
+  if (h > 0) return h + '小时'
+  return m + '分钟'
+}
+
+/** 检测当天有时间的日程之间的重叠冲突 */
+function detectTimeConflicts(rows) {
+  const conflictMap = {}
+  const timed = []
+  for (let i = 0; i < rows.length; i++) {
+    const r = rows[i]
+    const item = unwrapRow(r)
+    const block = parseTimeBlock(item)
+    if (block.hasTime) {
+      timed.push({ row: r, item, block })
+      conflictMap[item.id] = []
+    }
+  }
+
+  for (let i = 0; i < timed.length; i++) {
+    for (let j = i + 1; j < timed.length; j++) {
+      const a = timed[i]
+      const b = timed[j]
+      // 重叠判定: a.start < b.end && b.start < a.end
+      if (a.block.startMinutes < b.block.endMinutes && b.block.startMinutes < a.block.endMinutes) {
+        conflictMap[a.item.id].push({
+          id: b.item.id,
+          title: b.item.title,
+          time: b.item.time,
+          startTime: b.block.startTime,
+          endTime: b.block.endTime,
+        })
+        conflictMap[b.item.id].push({
+          id: a.item.id,
+          title: a.item.title,
+          time: a.item.time,
+          startTime: a.block.startTime,
+          endTime: a.block.endTime,
+        })
+      }
+    }
+  }
+  return conflictMap
+}
+
+/**
+ * 计算当天的垂直时间轴排程:
+ * 返回有序的节点列表 (含 task 节点与计算出来的 free 空闲时段节点), 以及未排期的待办列表
+ */
+function computeTimeSchedule(rows, options = {}) {
+  const unscheduled = []
+  const timed = []
+
+  for (let i = 0; i < rows.length; i++) {
+    const r = rows[i]
+    const item = unwrapRow(r)
+    const block = parseTimeBlock(item)
+    if (block.hasTime) {
+      timed.push({
+        row: r,
+        item,
+        done: !!r.done,
+        rollover: !!r.rollover,
+        block,
+      })
+    } else {
+      unscheduled.push(r)
+    }
+  }
+
+  // 按起始时间排序
+  timed.sort((a, b) => {
+    if (a.block.startMinutes !== b.block.startMinutes) {
+      return a.block.startMinutes - b.block.startMinutes
+    }
+    return String(a.item.title || '').localeCompare(String(b.item.title || ''))
+  })
+
+  // 冲突检测
+  const conflictMap = detectTimeConflicts(rows)
+
+  // 默认工作窗口: 9:00 - 21:00, 若有更早或更晚的任务则自适应外延
+  const defaultStart = typeof options.startHour === 'number' ? options.startHour * 60 : 9 * 60
+  const defaultEnd = typeof options.endHour === 'number' ? options.endHour * 60 : 21 * 60
+
+  let windowStart = defaultStart
+  let windowEnd = defaultEnd
+  if (timed.length > 0) {
+    windowStart = Math.min(windowStart, timed[0].block.startMinutes)
+    windowEnd = Math.max(windowEnd, timed[timed.length - 1].block.endMinutes)
+  }
+
+  const nodes = []
+  let cursor = windowStart
+  let totalFreeMinutes = 0
+  let totalBusyMinutes = 0
+  let conflictCount = 0
+
+  for (let i = 0; i < timed.length; i++) {
+    const cur = timed[i]
+    const conflicts = conflictMap[cur.item.id] || []
+    if (conflicts.length > 0) conflictCount++
+    totalBusyMinutes += cur.block.durationMinutes
+
+    // 若当前任务的起始时间在光标之后, 且差距 >= 15 分钟, 插入一个空闲段
+    if (cur.block.startMinutes > cursor && cur.block.startMinutes - cursor >= 15) {
+      const freeDur = cur.block.startMinutes - cursor
+      totalFreeMinutes += freeDur
+      nodes.push({
+        type: 'free',
+        startTime: minutesToTime(cursor),
+        endTime: cur.block.startTime,
+        startMinutes: cursor,
+        endMinutes: cur.block.startMinutes,
+        durationMinutes: freeDur,
+        durationText: formatDuration(freeDur),
+      })
+    }
+
+    nodes.push({
+      type: 'task',
+      row: cur.row,
+      item: cur.item,
+      done: cur.done,
+      rollover: cur.rollover,
+      block: cur.block,
+      conflicts,
+    })
+
+    // 光标向前推, 考虑任务可能重叠所以取 Math.max
+    cursor = Math.max(cursor, cur.block.endMinutes)
+  }
+
+  // 尾部空闲段
+  if (cursor < windowEnd && windowEnd - cursor >= 15) {
+    const tailFree = windowEnd - cursor
+    totalFreeMinutes += tailFree
+    nodes.push({
+      type: 'free',
+      startTime: minutesToTime(cursor),
+      endTime: minutesToTime(windowEnd),
+      startMinutes: cursor,
+      endMinutes: windowEnd,
+      durationMinutes: tailFree,
+      durationText: formatDuration(tailFree),
+    })
+  }
+
+  return {
+    nodes,
+    unscheduled,
+    stats: {
+      totalScheduled: timed.length,
+      totalUnscheduled: unscheduled.length,
+      conflictCount,
+      totalBusyMinutes,
+      totalFreeMinutes,
+      totalBusyText: formatDuration(totalBusyMinutes),
+      totalFreeText: formatDuration(totalFreeMinutes),
+      windowStart: minutesToTime(windowStart),
+      windowEnd: minutesToTime(windowEnd),
+    },
+  }
+}
+
 /** 连续完成天数:今天没做则从昨天起算。 */
 function streakOf(data, today) {
   let cursor = today
@@ -138,5 +375,6 @@ if (typeof window === 'undefined' && typeof module !== 'undefined' && module.exp
   module.exports = {
     pad, fmt, todayStr, dateOf, isoDay, addDays, mondayOf, WEEKDAY_NAMES,
     matches, recurringLabel, sortRows, rowsFor, completedBetween, hasDoneOn, streakOf,
+    minutesToTime, minutesOfDay, parseTimeBlock, formatDuration, detectTimeConflicts, computeTimeSchedule,
   }
 }

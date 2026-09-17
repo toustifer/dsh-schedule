@@ -126,3 +126,82 @@ test('logic: completedBetween 闭区间统计与 hasDoneOn/streakOf', () => {
   const data2 = { items: [], done: { z: { '2026-08-16': true, '2026-08-17': true } } }
   assert.equal(L.streakOf(data2, '2026-08-17'), 2)
 })
+
+test('logic: parseTimeBlock 支持起止区间与单点时间', () => {
+  // 区间格式 "09:00-10:30"
+  const b1 = L.parseTimeBlock({ time: '09:00-10:30' })
+  assert.equal(b1.hasTime, true)
+  assert.equal(b1.startTime, '09:00')
+  assert.equal(b1.endTime, '10:30')
+  assert.equal(b1.startMinutes, 540)
+  assert.equal(b1.endMinutes, 630)
+  assert.equal(b1.durationMinutes, 90)
+  assert.equal(b1.isRange, true)
+
+  // 显式 startTime 与 endTime 属性
+  const b2 = L.parseTimeBlock({ startTime: '14:00', endTime: '15:15' })
+  assert.equal(b2.hasTime, true)
+  assert.equal(b2.startTime, '14:00')
+  assert.equal(b2.endTime, '15:15')
+  assert.equal(b2.durationMinutes, 75)
+  assert.equal(b2.isRange, true)
+
+  // 单点时间 "16:00": 默认预估 45 分钟色块
+  const b3 = L.parseTimeBlock({ time: '16:00' })
+  assert.equal(b3.hasTime, true)
+  assert.equal(b3.startTime, '16:00')
+  assert.equal(b3.endTime, '16:45')
+  assert.equal(b3.durationMinutes, 45)
+  assert.equal(b3.isRange, false)
+
+  // 无时间
+  const b4 = L.parseTimeBlock({ title: '无时间' })
+  assert.equal(b4.hasTime, false)
+  assert.equal(b4.startMinutes, null)
+})
+
+test('logic: detectTimeConflicts 重叠判定', () => {
+  const rows = [
+    { item: { id: '1', title: '会议A', time: '09:00-10:30' } },
+    { item: { id: '2', title: '会议B', time: '10:00-11:00' } }, // 与 A 重叠
+    { item: { id: '3', title: '午餐', time: '12:00-13:00' } },   // 独立
+  ]
+  const map = L.detectTimeConflicts(rows)
+  assert.equal(map['1'].length, 1)
+  assert.equal(map['1'][0].id, '2')
+  assert.equal(map['2'].length, 1)
+  assert.equal(map['2'][0].id, '1')
+  assert.equal(map['3'].length, 0)
+})
+
+test('logic: computeTimeSchedule 插入空闲段与按序排列', () => {
+  const rows = [
+    { item: { id: 't2', title: '下午评审', time: '14:00-15:00' } },
+    { item: { id: 't1', title: '晨会', time: '09:00-10:00' } },
+    { item: { id: 'none', title: '无排期待办' } },
+  ]
+  const schedule = L.computeTimeSchedule(rows, { startHour: 9, endHour: 18 })
+  assert.equal(schedule.unscheduled.length, 1)
+  assert.equal(schedule.unscheduled[0].item.id, 'none')
+
+  // 节点顺序应为: 晨会 (9:00-10:00) -> 空闲段 (10:00-14:00 4小时) -> 下午评审 (14:00-15:00) -> 空闲段 (15:00-18:00)
+  assert.equal(schedule.nodes.length, 4)
+  assert.equal(schedule.nodes[0].type, 'task')
+  assert.equal(schedule.nodes[0].item.id, 't1')
+
+  assert.equal(schedule.nodes[1].type, 'free')
+  assert.equal(schedule.nodes[1].startTime, '10:00')
+  assert.equal(schedule.nodes[1].endTime, '14:00')
+  assert.equal(schedule.nodes[1].durationMinutes, 240)
+
+  assert.equal(schedule.nodes[2].type, 'task')
+  assert.equal(schedule.nodes[2].item.id, 't2')
+
+  assert.equal(schedule.nodes[3].type, 'free')
+  assert.equal(schedule.nodes[3].startTime, '15:00')
+  assert.equal(schedule.nodes[3].endTime, '18:00')
+
+  assert.equal(schedule.stats.conflictCount, 0)
+  assert.equal(schedule.stats.totalScheduled, 2)
+  assert.equal(schedule.stats.totalUnscheduled, 1)
+})

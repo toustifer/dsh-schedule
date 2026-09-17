@@ -38,6 +38,17 @@ test('normalizeItem: 校验与默认值', () => {
   assert.deepEqual(normalizeItem({ title: 'x', recurring: 'weekly' }, 123, '2026-08-17').weekdays, [1])
   // 非法时间被清空
   assert.equal(normalizeItem({ title: 'x', time: 'abc' }, 123, '2026-08-17').time, '')
+  // 时间区间解析
+  const ranged = normalizeItem({ title: 'x', time: '09:00-11:30' }, 123, '2026-08-17')
+  assert.equal(ranged.startTime, '09:00')
+  assert.equal(ranged.endTime, '11:30')
+  assert.equal(ranged.time, '09:00-11:30')
+  // 显式 start_time 与 end_time
+  const explicit = normalizeItem({ title: 'x', start_time: '14:00', end_time: '15:00', quadrant: 'q1' }, 123, '2026-08-17')
+  assert.equal(explicit.startTime, '14:00')
+  assert.equal(explicit.endTime, '15:00')
+  assert.equal(explicit.time, '14:00-15:00')
+  assert.equal(explicit.quadrant, 'q1')
   // 非法 weekdays 被过滤
   assert.deepEqual(normalizeItem({ title: 'x', recurring: 'weekly', weekdays: [1, 9, 0, 3] }, 123, '2026-08-17').weekdays, [1, 3])
 })

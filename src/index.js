@@ -36,13 +36,16 @@ export function apply(ctx) {
   // ---- 模型工具 ----
   ctx.tools.register(makeTool(
     'dailytask_add',
-    '添加一条日程。recurring 为 once(一次性,需要 date)时只出现在那一天;daily(每天)每天都出现;weekly(每周)在 weekdays 指定的星期几出现(1=周一 … 7=周日)。time 为可选时间(HH:MM)。carry_over 仅对 once 生效:开启后若到期日未完成,下次查看时自动顺延到当天(历史日期保留)。',
+    '添加一条日程。recurring 为 once(一次性,需要 date)时只出现在那一天;daily(每天)每天都出现;weekly(每周)在 weekdays 指定的星期几出现(1=周一 … 7=周日)。time 可为可选时间点(HH:MM)或时间块(HH:MM-HH:MM);也可单独传 start_time 与 end_time。quadrant 为四象限(q1重要紧急/q2重要不紧急/q3紧急不重要/q4不重要不紧急)。carry_over 仅对 once 生效:开启后若到期日未完成,下次查看时自动顺延到当天(历史日期保留)。',
     {
       title: { type: 'string', required: true, description: '日程标题' },
       recurring: { type: 'string', description: '重复方式: once(默认) / daily / weekly' },
       date: { type: 'string', description: '日期 YYYY-MM-DD(once 时必填,缺省今天;weekly 可忽略)' },
       weekdays: { type: 'array', description: 'weekly 时生效:星期几数组,1=周一 … 7=周日,缺省今天' },
-      time: { type: 'string', description: '可选时间 HH:MM' },
+      time: { type: 'string', description: '可选时间 HH:MM 或区间 HH:MM-HH:MM' },
+      start_time: { type: 'string', description: '可选起始时间 HH:MM' },
+      end_time: { type: 'string', description: '可选结束时间 HH:MM' },
+      quadrant: { type: 'string', description: '四象限优先级: q1(重要紧急)/q2(重要不紧急)/q3(紧急不重要)/q4(不重要不紧急)' },
       note: { type: 'string', description: '可选备注' },
       carry_over: { type: 'boolean', description: '仅 once 生效:未完成自动顺延到当天(默认 false)' },
     },
@@ -81,14 +84,17 @@ export function apply(ctx) {
 
   ctx.tools.register(makeTool(
     'dailytask_update',
-    '修改一条日程。只更新提供的字段: title / date / recurring / weekdays / time / note / carry_over。',
+    '修改一条日程。只更新提供的字段: title / date / recurring / weekdays / time / start_time / end_time / quadrant / note / carry_over。',
     {
       id: { type: 'string', required: true, description: '日程 id' },
       title: { type: 'string', description: '新标题' },
       date: { type: 'string', description: '新日期 YYYY-MM-DD' },
       recurring: { type: 'string', description: 'once / daily / weekly' },
       weekdays: { type: 'array', description: 'weekly 的星期几 1-7' },
-      time: { type: 'string', description: '时间 HH:MM' },
+      time: { type: 'string', description: '时间 HH:MM 或区间 HH:MM-HH:MM' },
+      start_time: { type: 'string', description: '起始时间 HH:MM' },
+      end_time: { type: 'string', description: '结束时间 HH:MM' },
+      quadrant: { type: 'string', description: '四象限优先级: q1(重要紧急)/q2(重要不紧急)/q3(紧急不重要)/q4(不重要不紧急)' },
       note: { type: 'string', description: '备注' },
       carry_over: { type: 'boolean', description: '仅 once 生效:未完成自动顺延(默认 false)' },
     },

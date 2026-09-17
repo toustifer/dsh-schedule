@@ -27,6 +27,39 @@ export const LEGACY_DATA_PATH = join(process.cwd(), 'dsh-schedule-data.json')
 
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/
 const TIME_RE = /^\d{1,2}:\d{2}$/
+const TIME_RANGE_RE = /^(\d{1,2}:\d{2})\s*[-~至到]\s*(\d{1,2}:\d{2})$/
+
+export function parseTimeFields(inputTime, inputStartTime, inputEndTime) {
+  let startTime = ''
+  let endTime = ''
+
+  if (typeof inputStartTime === 'string' && TIME_RE.test(inputStartTime.trim())) {
+    startTime = inputStartTime.trim()
+  }
+  if (typeof inputEndTime === 'string' && TIME_RE.test(inputEndTime.trim())) {
+    endTime = inputEndTime.trim()
+  }
+
+  if (typeof inputTime === 'string') {
+    const t = inputTime.trim()
+    const m = t.match(TIME_RANGE_RE)
+    if (m) {
+      if (!startTime) startTime = m[1]
+      if (!endTime) endTime = m[2]
+    } else if (TIME_RE.test(t)) {
+      if (!startTime) startTime = t
+    }
+  }
+
+  let time = ''
+  if (startTime && endTime) {
+    time = startTime + '-' + endTime
+  } else if (startTime) {
+    time = startTime
+  }
+
+  return { time, startTime, endTime }
+}
 
 function pad(n) {
   return String(n).padStart(2, '0')
@@ -135,6 +168,15 @@ function normalizeStoredItem(raw) {
   if (!Array.isArray(item.weekdays)) item.weekdays = []
   if (!Array.isArray(item.linkedSessions)) item.linkedSessions = []
   if (!Array.isArray(item.rolloverDates)) item.rolloverDates = []
+  if (!item.quadrant) item.quadrant = 'q2'
+  if (typeof item.time !== 'string') item.time = ''
+  if (!item.startTime && item.time) {
+    const p = parseTimeFields(item.time, '', '')
+    item.startTime = p.startTime
+    item.endTime = p.endTime
+  }
+  if (!item.startTime) item.startTime = ''
+  if (!item.endTime) item.endTime = ''
   item.carryOver = item.carryOver === true
   return item
 }
@@ -156,7 +198,12 @@ export function normalizeItem(args, now = Date.now(), today = localDateStr()) {
     ? args.weekdays.map(Number).filter((n) => n >= 1 && n <= 7)
     : []
   if (recurring === 'weekly' && weekdays.length === 0) weekdays = [isoDay(currentDate)]
-  const time = typeof args.time === 'string' && TIME_RE.test(args.time) ? args.time : ''
+  const timeParsed = parseTimeFields(
+    args.time,
+    args.startTime !== undefined ? args.startTime : args.start_time,
+    args.endTime !== undefined ? args.endTime : args.end_time
+  )
+  const quadrant = typeof args.quadrant === 'string' && ['q1', 'q2', 'q3', 'q4'].includes(args.quadrant) ? args.quadrant : 'q2'
   const carryOver = recurring === 'once' && (args.carryOver === true || args.carry_over === true)
   return {
     id: 'dt_' + now.toString(36) + '_' + Math.random().toString(36).slice(2, 8),
@@ -164,7 +211,10 @@ export function normalizeItem(args, now = Date.now(), today = localDateStr()) {
     recurring,
     date,
     weekdays,
-    time,
+    time: timeParsed.time,
+    startTime: timeParsed.startTime,
+    endTime: timeParsed.endTime,
+    quadrant,
     note: typeof args.note === 'string' ? args.note : '',
     linkedSessions: [],
     carryOver,
@@ -372,8 +422,18 @@ export class ScheduleStore {
       if (Array.isArray(patch.weekdays)) {
         item.weekdays = patch.weekdays.map(Number).filter((n) => n >= 1 && n <= 7)
       }
-      if (typeof patch.time === 'string') {
-        item.time = TIME_RE.test(patch.time) ? patch.time : ''
+      if (patch.quadrant !== undefined) {
+        item.quadrant = ['q1', 'q2', 'q3', 'q4'].includes(patch.quadrant) ? patch.quadrant : 'q2'
+      }
+      if (patch.time !== undefined || patch.startTime !== undefined || patch.start_time !== undefined || patch.endTime !== undefined || patch.end_time !== undefined) {
+        const timeParsed = parseTimeFields(
+          patch.time !== undefined ? patch.time : item.time,
+          patch.startTime !== undefined ? patch.startTime : (patch.start_time !== undefined ? patch.start_time : item.startTime),
+          patch.endTime !== undefined ? patch.endTime : (patch.end_time !== undefined ? patch.end_time : item.endTime)
+        )
+        item.time = timeParsed.time
+        item.startTime = timeParsed.startTime
+        item.endTime = timeParsed.endTime
       }
       if (typeof patch.note === 'string') item.note = patch.note
       const carryArg = patch.carryOver !== undefined ? patch.carryOver : patch.carry_over

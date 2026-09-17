@@ -19,7 +19,7 @@
 const React = require('react')
 
 // 注:CSS 全部展开为单行字符串(构建脚本只做文本内联,不做 CSS 压缩)。
-const CSS = '.dsh-sched-linkbtn{display:inline-flex;align-items:center;justify-content:center;background:transparent;border:1px solid transparent;border-radius:8px;padding:3px 6px;font-size:14px;cursor:pointer;color:inherit;}.dsh-sched-linkbtn:hover,.dsh-sched-linkbtn.active{background:rgba(127,127,127,.14);}.dsh-sched-overlay-wrap{position:fixed;top:0;left:0;right:0;bottom:0;pointer-events:none;z-index:1000;font-family:inherit;}.dsh-sched-header{display:flex;align-items:center;gap:8px;padding:10px 12px;border-bottom:1px solid rgba(127,127,127,.2);font-weight:600;font-size:14px;}.dsh-sched-tabs{display:flex;gap:4px;margin-left:auto;}.dsh-sched-tab{border:1px solid rgba(127,127,127,.3);background:transparent;border-radius:8px;padding:3px 10px;font-size:12px;cursor:pointer;color:inherit;}.dsh-sched-tab.active{background:rgba(9,105,218,.12);border-color:rgba(9,105,218,.5);color:#0969da;}.dsh-sched-add{padding:10px 12px;border-bottom:1px solid rgba(127,127,127,.2);display:flex;flex-direction:column;gap:6px;}.dsh-sched-add-row{display:flex;gap:6px;align-items:center;}.dsh-sched-input{flex:1;min-width:0;background:rgba(127,127,127,.08);border:1px solid rgba(127,127,127,.3);border-radius:8px;padding:5px 9px;font-size:13px;color:inherit;}.dsh-sched-input:focus{outline:none;border-color:rgba(9,105,218,.6);}.dsh-sched-addbtn{background:#0969da;color:#fff;border:none;border-radius:8px;padding:5px 12px;font-size:13px;cursor:pointer;white-space:nowrap;}.dsh-sched-addbtn:hover{background:#0a5bb8;}.dsh-sched-add-opts{display:flex;gap:6px;flex-wrap:wrap;align-items:center;}.dsh-sched-weekdays{display:flex;gap:3px;}.dsh-sched-wd{border:1px solid rgba(127,127,127,.35);background:transparent;border-radius:50%;width:24px;height:24px;font-size:11px;cursor:pointer;color:inherit;display:flex;align-items:center;justify-content:center;padding:0;}.dsh-sched-wd.on{background:rgba(9,105,218,.18);border-color:#0969da;color:#0969da;}.dsh-sched-body{flex:1;overflow-y:auto;padding:8px 10px;}.dsh-sched-day{padding:6px 0;}.dsh-sched-dayhead{font-size:12px;font-weight:600;color:rgba(127,127,127,.9);margin:4px 2px 6px;display:flex;align-items:center;gap:6px;}.dsh-sched-dayhead.today{color:#0969da;}.dsh-sched-dayhead .cnt{font-weight:400;color:rgba(127,127,127,.7);}.dsh-sched-row{display:flex;align-items:center;gap:8px;padding:6px 8px;border-radius:8px;}.dsh-sched-row:hover{background:rgba(127,127,127,.1);}.dsh-sched-circle{width:18px;height:18px;border-radius:50%;border:2px solid rgba(127,127,127,.7);background:transparent;cursor:pointer;flex:none;display:flex;align-items:center;justify-content:center;font-size:10px;color:#fff;padding:0;}.dsh-sched-circle.done{background:#2da44e;border-color:#2da44e;}.dsh-sched-main{flex:1;min-width:0;display:flex;flex-direction:column;gap:1px;}.dsh-sched-title{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;cursor:default;}.dsh-sched-title.linked{cursor:pointer;color:#0969da;}.dsh-sched-title.done{text-decoration:line-through;opacity:.5;}.dsh-sched-meta{display:flex;gap:5px;align-items:center;font-size:11px;color:rgba(127,127,127,.85);flex-wrap:wrap;}.dsh-sched-pill{background:rgba(127,127,127,.14);border-radius:5px;padding:0 5px;font-size:10px;line-height:16px;}.dsh-sched-note{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:260px;}.dsh-sched-chips{display:flex;gap:4px;flex-wrap:wrap;align-items:center;}.dsh-sched-chip{display:inline-flex;align-items:center;gap:2px;max-width:130px;background:rgba(9,105,218,.1);color:#0969da;border:1px solid rgba(9,105,218,.3);border-radius:10px;padding:1px 7px;font-size:11px;cursor:pointer;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}.dsh-sched-link{flex:none;width:20px;height:20px;border-radius:50%;border:1px dashed rgba(127,127,127,.6);background:transparent;font-size:11px;cursor:pointer;color:rgba(127,127,127,.8);display:flex;align-items:center;justify-content:center;padding:0;}.dsh-sched-link:hover{border-color:#0969da;color:#0969da;}.dsh-sched-link.on{border-color:rgba(127,127,127,.5);background:rgba(127,127,127,.12);color:rgba(127,127,127,.8);}.dsh-sched-del{flex:none;border:none;background:transparent;color:rgba(127,127,127,.65);font-size:13px;cursor:pointer;border-radius:6px;padding:0 4px;}.dsh-sched-del:hover{color:#d1242f;background:rgba(209,36,47,.1);}.dsh-sched-del.confirm{color:#fff;background:#d1242f;font-size:11px;border-radius:8px;padding:2px 6px;}.dsh-sched-donesum{padding:5px 8px;font-size:12px;color:rgba(127,127,127,.85);cursor:pointer;display:flex;align-items:center;gap:5px;border-radius:8px;}.dsh-sched-donesum:hover{background:rgba(127,127,127,.1);}.dsh-sched-empty{padding:18px 8px;text-align:center;color:rgba(127,127,127,.7);font-size:12px;}.dsh-sched-footer{padding:6px 12px;border-top:1px solid rgba(127,127,127,.2);font-size:11px;color:rgba(127,127,127,.75);display:flex;justify-content:space-between;gap:8px;}.dsh-sched-linker{position:fixed;bottom:86px;right:16px;width:300px;max-width:calc(100vw - 32px);background:#ffffff;color:#1f2328;border:1px solid rgba(127,127,127,.3);border-radius:12px;box-shadow:0 8px 32px rgba(0,0,0,.22);pointer-events:auto;font-size:13px;overflow:hidden;z-index:1001;}.dsh-sched-linker-head{padding:9px 12px;font-weight:600;font-size:13px;border-bottom:1px solid rgba(127,127,127,.2);display:flex;align-items:center;justify-content:space-between;}.dsh-sched-linker-list{max-height:280px;overflow-y:auto;padding:6px;}.dsh-sched-linker-item{display:flex;align-items:center;gap:6px;padding:6px 8px;border-radius:8px;cursor:pointer;}.dsh-sched-linker-item:hover{background:rgba(127,127,127,.1);}.dsh-sched-linker-item .tag{margin-left:auto;font-size:10px;color:rgba(127,127,127,.7);flex:none;}.dsh-sched-linker-item.linked .tag{color:#2da44e;}.dsh-sched-linker-cancel{padding:7px;border-top:1px solid rgba(127,127,127,.2);text-align:center;}.dsh-sched-linker-cancel button{border:none;background:transparent;color:rgba(127,127,127,.8);cursor:pointer;font-size:12px;padding:2px 12px;border-radius:8px;}.dsh-sched-linker-cancel button:hover{background:rgba(127,127,127,.1);}.dsh-sched-cal{display:grid;grid-template-columns:repeat(7,1fr);gap:2px;margin:2px 0 6px;}.dsh-sched-calhead{text-align:center;font-size:10px;color:rgba(127,127,127,.7);padding:2px 0;}.dsh-sched-cald{border:1px solid rgba(127,127,127,.14);border-radius:6px;min-height:40px;padding:2px;cursor:pointer;text-align:center;font-size:11px;display:flex;flex-direction:column;align-items:center;gap:1px;background:transparent;color:inherit;}.dsh-sched-cald:hover{border-color:rgba(127,127,127,.45);}.dsh-sched-cald.empty{visibility:hidden;}.dsh-sched-cald.today{border-color:#0969da;}.dsh-sched-cald.sel{background:rgba(9,105,218,.16);border-color:#0969da;}.dsh-sched-cald .d{font-size:11px;line-height:1.3;}.dsh-sched-cald .s{font-size:9px;color:rgba(127,127,127,.8);line-height:1.2;}.dsh-sched-cald .s.doneall{color:#2da44e;font-weight:600;}.dsh-sched-calnav{display:flex;align-items:center;justify-content:space-between;margin:2px 2px 6px;}.dsh-sched-calnav button{border:1px solid rgba(127,127,127,.3);background:transparent;border-radius:6px;padding:2px 9px;font-size:12px;cursor:pointer;color:inherit;}.dsh-sched-calnav button:hover{background:rgba(127,127,127,.12);}.dsh-sched-calnav .t{font-weight:600;font-size:13px;}.dsh-sched-stats{display:grid;grid-template-columns:repeat(4,1fr);gap:4px;margin-bottom:8px;}.dsh-sched-stat{background:rgba(127,127,127,.07);border:1px solid rgba(127,127,127,.15);border-radius:8px;padding:5px 4px;text-align:center;}.dsh-sched-stat .v{font-size:15px;font-weight:700;line-height:1.3;}.dsh-sched-stat .k{font-size:10px;color:rgba(127,127,127,.75);margin-top:1px;}.dsh-sched-histhead{font-size:12px;font-weight:600;color:rgba(127,127,127,.9);margin:4px 2px 6px;}.dsh-sched-backbtn{border:none;background:transparent;border-radius:8px;padding:2px 8px;font-size:15px;line-height:1;cursor:pointer;color:inherit;}.dsh-sched-backbtn:hover{background:rgba(127,127,127,.15);}.dsh-sched-addtoggle{border:1px solid rgba(9,105,218,.5);background:rgba(9,105,218,.08);color:#0969da;border-radius:8px;padding:3px 10px;font-size:12px;line-height:1.4;cursor:pointer;white-space:nowrap;}.dsh-sched-addtoggle:hover{background:rgba(9,105,218,.16);}.dsh-sched-addtoggle.active{background:#0969da;border-color:#0969da;color:#fff;}.dsh-sched-textarea{width:100%;min-height:56px;resize:vertical;background:rgba(127,127,127,.08);border:1px solid rgba(127,127,127,.3);border-radius:8px;padding:6px 9px;font-size:13px;color:inherit;font-family:inherit;box-sizing:border-box;}.dsh-sched-textarea:focus{outline:none;border-color:rgba(9,105,218,.6);}.dsh-sched-editbtn{flex:none;border:none;background:transparent;color:rgba(127,127,127,.75);font-size:13px;cursor:pointer;border-radius:6px;padding:0 4px;}.dsh-sched-editbtn:hover{color:#0969da;background:rgba(9,105,218,.08);}.dsh-sched-detail{padding:12px 14px 14px;display:flex;flex-direction:column;gap:10px;}.dsh-sched-detail-title{font-size:16px;font-weight:600;line-height:1.5;word-break:break-word;}.dsh-sched-detail-pills{display:flex;gap:5px;flex-wrap:wrap;align-items:center;}.dsh-sched-section{border-top:1px solid rgba(127,127,127,.16);padding-top:8px;display:flex;flex-direction:column;gap:6px;}.dsh-sched-section-label{font-size:11px;font-weight:600;color:rgba(127,127,127,.85);}.dsh-sched-note-full{white-space:pre-wrap;word-break:break-word;line-height:1.6;font-size:13px;background:rgba(127,127,127,.07);border-radius:8px;padding:8px 10px;}.dsh-sched-note-empty{font-size:12px;color:rgba(127,127,127,.7);}.dsh-sched-actions{margin-top:auto;display:flex;gap:6px;flex-wrap:wrap;padding-top:10px;border-top:1px solid rgba(127,127,127,.16);}.dsh-sched-abtn{display:inline-flex;align-items:center;gap:4px;border:1px solid rgba(127,127,127,.35);background:transparent;border-radius:8px;padding:5px 12px;font-size:12px;line-height:1.4;cursor:pointer;color:inherit;}.dsh-sched-abtn:hover{background:rgba(127,127,127,.1);}.dsh-sched-abtn.primary{background:#0969da;border-color:#0969da;color:#fff;}.dsh-sched-abtn.primary:hover{background:#0a5bb8;}.dsh-sched-abtn.danger{color:#d1242f;border-color:rgba(209,36,47,.5);}.dsh-sched-abtn.danger:hover{background:rgba(209,36,47,.08);}.dsh-sched-abtn.danger.confirm{background:#d1242f;border-color:#d1242f;color:#fff;}.dsh-sched-chip.static{cursor:default;}.dsh-sched-tabwrap{position:relative;display:flex;flex-direction:column;height:100%;min-height:0;background:transparent;border:none;border-radius:0;box-shadow:none;}.dsh-sched-tabwrap .dsh-sched-header{font-size:13px;padding:8px 10px;}.dsh-sched-tabwrap .dsh-sched-body{padding:8px 10px 12px;}.dsh-sched-tabwrap .dsh-sched-footer{padding:6px 10px;opacity:.75;}@media (prefers-color-scheme: dark){.dsh-sched-linker{background:#1b1e23;color:#e6e8eb;border-color:rgba(255,255,255,.16);}.dsh-sched-tab.active{background:rgba(86,155,235,.18);border-color:rgba(86,155,235,.55);color:#6cb0f5;}.dsh-sched-addbtn{background:#2f7be0;}.dsh-sched-title.linked,.dsh-sched-chip,.dsh-sched-dayhead.today{color:#6cb0f5;}.dsh-sched-chip{background:rgba(86,155,235,.14);border-color:rgba(86,155,235,.4);}.dsh-sched-wd.on{background:rgba(86,155,235,.2);border-color:#6cb0f5;color:#6cb0f5;}.dsh-sched-input:focus{border-color:rgba(86,155,235,.6);}.dsh-sched-cald.today,.dsh-sched-cald.sel{border-color:#6cb0f5;}.dsh-sched-cald.sel{background:rgba(86,155,235,.2);}.dsh-sched-calnav button{border-color:rgba(255,255,255,.25);}.dsh-sched-addtoggle{color:#6cb0f5;border-color:rgba(86,155,235,.55);background:rgba(86,155,235,.14);}.dsh-sched-addtoggle.active{background:#2f7be0;border-color:#2f7be0;color:#fff;}.dsh-sched-section,.dsh-sched-actions{border-top-color:rgba(255,255,255,.12);}.dsh-sched-note-full{background:rgba(255,255,255,.06);}.dsh-sched-abtn{border-color:rgba(255,255,255,.28);}.dsh-sched-abtn.primary{background:#2f7be0;border-color:#2f7be0;}.dsh-sched-editbtn:hover{color:#6cb0f5;background:rgba(86,155,235,.12);}.dsh-sched-textarea:focus{border-color:rgba(86,155,235,.6);}}'
+const CSS = '.dsh-sched-linkbtn{display:inline-flex;align-items:center;justify-content:center;background:transparent;border:1px solid transparent;border-radius:8px;padding:3px 6px;font-size:14px;cursor:pointer;color:inherit;}.dsh-sched-linkbtn:hover,.dsh-sched-linkbtn.active{background:rgba(127,127,127,.14);}.dsh-sched-overlay-wrap{position:fixed;top:0;left:0;right:0;bottom:0;pointer-events:none;z-index:1000;font-family:inherit;}.dsh-sched-header{display:flex;align-items:center;gap:8px;padding:10px 12px;border-bottom:1px solid rgba(127,127,127,.2);font-weight:600;font-size:14px;}.dsh-sched-tabs{display:flex;gap:4px;margin-left:auto;}.dsh-sched-tab{border:1px solid rgba(127,127,127,.3);background:transparent;border-radius:8px;padding:3px 10px;font-size:12px;cursor:pointer;color:inherit;}.dsh-sched-tab.active{background:rgba(9,105,218,.12);border-color:rgba(9,105,218,.5);color:#0969da;}.dsh-sched-add{padding:10px 12px;border-bottom:1px solid rgba(127,127,127,.2);display:flex;flex-direction:column;gap:6px;}.dsh-sched-add-row{display:flex;gap:6px;align-items:center;}.dsh-sched-input{flex:1;min-width:0;background:rgba(127,127,127,.08);border:1px solid rgba(127,127,127,.3);border-radius:8px;padding:5px 9px;font-size:13px;color:inherit;}.dsh-sched-input:focus{outline:none;border-color:rgba(9,105,218,.6);}.dsh-sched-addbtn{background:#0969da;color:#fff;border:none;border-radius:8px;padding:5px 12px;font-size:13px;cursor:pointer;white-space:nowrap;}.dsh-sched-addbtn:hover{background:#0a5bb8;}.dsh-sched-add-opts{display:flex;gap:6px;flex-wrap:wrap;align-items:center;}.dsh-sched-weekdays{display:flex;gap:3px;}.dsh-sched-wd{border:1px solid rgba(127,127,127,.35);background:transparent;border-radius:50%;width:24px;height:24px;font-size:11px;cursor:pointer;color:inherit;display:flex;align-items:center;justify-content:center;padding:0;}.dsh-sched-wd.on{background:rgba(9,105,218,.18);border-color:#0969da;color:#0969da;}.dsh-sched-body{flex:1;overflow-y:auto;padding:8px 10px;}.dsh-sched-day{padding:6px 0;}.dsh-sched-dayhead{font-size:12px;font-weight:600;color:rgba(127,127,127,.9);margin:4px 2px 6px;display:flex;align-items:center;gap:6px;}.dsh-sched-dayhead.today{color:#0969da;}.dsh-sched-dayhead .cnt{font-weight:400;color:rgba(127,127,127,.7);}.dsh-sched-row{display:flex;align-items:center;gap:8px;padding:6px 8px;border-radius:8px;}.dsh-sched-row:hover{background:rgba(127,127,127,.1);}.dsh-sched-circle{width:18px;height:18px;border-radius:50%;border:2px solid rgba(127,127,127,.7);background:transparent;cursor:pointer;flex:none;display:flex;align-items:center;justify-content:center;font-size:10px;color:#fff;padding:0;}.dsh-sched-circle.done{background:#2da44e;border-color:#2da44e;}.dsh-sched-main{flex:1;min-width:0;display:flex;flex-direction:column;gap:1px;}.dsh-sched-title{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;cursor:default;}.dsh-sched-title.linked{cursor:pointer;color:#0969da;}.dsh-sched-title.done{text-decoration:line-through;opacity:.5;}.dsh-sched-meta{display:flex;gap:5px;align-items:center;font-size:11px;color:rgba(127,127,127,.85);flex-wrap:wrap;}.dsh-sched-pill{background:rgba(127,127,127,.14);border-radius:5px;padding:0 5px;font-size:10px;line-height:16px;}.dsh-sched-note{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:260px;}.dsh-sched-chips{display:flex;gap:4px;flex-wrap:wrap;align-items:center;}.dsh-sched-chip{display:inline-flex;align-items:center;gap:2px;max-width:130px;background:rgba(9,105,218,.1);color:#0969da;border:1px solid rgba(9,105,218,.3);border-radius:10px;padding:1px 7px;font-size:11px;cursor:pointer;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}.dsh-sched-link{flex:none;width:20px;height:20px;border-radius:50%;border:1px dashed rgba(127,127,127,.6);background:transparent;font-size:11px;cursor:pointer;color:rgba(127,127,127,.8);display:flex;align-items:center;justify-content:center;padding:0;}.dsh-sched-link:hover{border-color:#0969da;color:#0969da;}.dsh-sched-link.on{border-color:rgba(127,127,127,.5);background:rgba(127,127,127,.12);color:rgba(127,127,127,.8);}.dsh-sched-del{flex:none;border:none;background:transparent;color:rgba(127,127,127,.65);font-size:13px;cursor:pointer;border-radius:6px;padding:0 4px;}.dsh-sched-del:hover{color:#d1242f;background:rgba(209,36,47,.1);}.dsh-sched-del.confirm{color:#fff;background:#d1242f;font-size:11px;border-radius:8px;padding:2px 6px;}.dsh-sched-donesum{padding:5px 8px;font-size:12px;color:rgba(127,127,127,.85);cursor:pointer;display:flex;align-items:center;gap:5px;border-radius:8px;}.dsh-sched-donesum:hover{background:rgba(127,127,127,.1);}.dsh-sched-empty{padding:18px 8px;text-align:center;color:rgba(127,127,127,.7);font-size:12px;}.dsh-sched-footer{padding:6px 12px;border-top:1px solid rgba(127,127,127,.2);font-size:11px;color:rgba(127,127,127,.75);display:flex;justify-content:space-between;gap:8px;}.dsh-sched-linker{position:fixed;bottom:86px;right:16px;width:300px;max-width:calc(100vw - 32px);background:#ffffff;color:#1f2328;border:1px solid rgba(127,127,127,.3);border-radius:12px;box-shadow:0 8px 32px rgba(0,0,0,.22);pointer-events:auto;font-size:13px;overflow:hidden;z-index:1001;}.dsh-sched-linker-head{padding:9px 12px;font-weight:600;font-size:13px;border-bottom:1px solid rgba(127,127,127,.2);display:flex;align-items:center;justify-content:space-between;}.dsh-sched-linker-list{max-height:280px;overflow-y:auto;padding:6px;}.dsh-sched-linker-item{display:flex;align-items:center;gap:6px;padding:6px 8px;border-radius:8px;cursor:pointer;}.dsh-sched-linker-item:hover{background:rgba(127,127,127,.1);}.dsh-sched-linker-item .tag{margin-left:auto;font-size:10px;color:rgba(127,127,127,.7);flex:none;}.dsh-sched-linker-item.linked .tag{color:#2da44e;}.dsh-sched-linker-cancel{padding:7px;border-top:1px solid rgba(127,127,127,.2);text-align:center;}.dsh-sched-linker-cancel button{border:none;background:transparent;color:rgba(127,127,127,.8);cursor:pointer;font-size:12px;padding:2px 12px;border-radius:8px;}.dsh-sched-linker-cancel button:hover{background:rgba(127,127,127,.1);}.dsh-sched-cal{display:grid;grid-template-columns:repeat(7,1fr);gap:2px;margin:2px 0 6px;}.dsh-sched-calhead{text-align:center;font-size:10px;color:rgba(127,127,127,.7);padding:2px 0;}.dsh-sched-cald{border:1px solid rgba(127,127,127,.14);border-radius:6px;min-height:40px;padding:2px;cursor:pointer;text-align:center;font-size:11px;display:flex;flex-direction:column;align-items:center;gap:1px;background:transparent;color:inherit;}.dsh-sched-cald:hover{border-color:rgba(127,127,127,.45);}.dsh-sched-cald.empty{visibility:hidden;}.dsh-sched-cald.today{border-color:#0969da;}.dsh-sched-cald.sel{background:rgba(9,105,218,.16);border-color:#0969da;}.dsh-sched-cald .d{font-size:11px;line-height:1.3;}.dsh-sched-cald .s{font-size:9px;color:rgba(127,127,127,.8);line-height:1.2;}.dsh-sched-cald .s.doneall{color:#2da44e;font-weight:600;}.dsh-sched-calnav{display:flex;align-items:center;justify-content:space-between;margin:2px 2px 6px;}.dsh-sched-calnav button{border:1px solid rgba(127,127,127,.3);background:transparent;border-radius:6px;padding:2px 9px;font-size:12px;cursor:pointer;color:inherit;}.dsh-sched-calnav button:hover{background:rgba(127,127,127,.12);}.dsh-sched-calnav .t{font-weight:600;font-size:13px;}.dsh-sched-stats{display:grid;grid-template-columns:repeat(4,1fr);gap:4px;margin-bottom:8px;}.dsh-sched-stat{background:rgba(127,127,127,.07);border:1px solid rgba(127,127,127,.15);border-radius:8px;padding:5px 4px;text-align:center;}.dsh-sched-stat .v{font-size:15px;font-weight:700;line-height:1.3;}.dsh-sched-stat .k{font-size:10px;color:rgba(127,127,127,.75);margin-top:1px;}.dsh-sched-histhead{font-size:12px;font-weight:600;color:rgba(127,127,127,.9);margin:4px 2px 6px;}.dsh-sched-backbtn{border:none;background:transparent;border-radius:8px;padding:2px 8px;font-size:15px;line-height:1;cursor:pointer;color:inherit;}.dsh-sched-backbtn:hover{background:rgba(127,127,127,.15);}.dsh-sched-addtoggle{border:1px solid rgba(9,105,218,.5);background:rgba(9,105,218,.08);color:#0969da;border-radius:8px;padding:3px 10px;font-size:12px;line-height:1.4;cursor:pointer;white-space:nowrap;}.dsh-sched-addtoggle:hover{background:rgba(9,105,218,.16);}.dsh-sched-addtoggle.active{background:#0969da;border-color:#0969da;color:#fff;}.dsh-sched-textarea{width:100%;min-height:56px;resize:vertical;background:rgba(127,127,127,.08);border:1px solid rgba(127,127,127,.3);border-radius:8px;padding:6px 9px;font-size:13px;color:inherit;font-family:inherit;box-sizing:border-box;}.dsh-sched-textarea:focus{outline:none;border-color:rgba(9,105,218,.6);}.dsh-sched-editbtn{flex:none;border:none;background:transparent;color:rgba(127,127,127,.75);font-size:13px;cursor:pointer;border-radius:6px;padding:0 4px;}.dsh-sched-editbtn:hover{color:#0969da;background:rgba(9,105,218,.08);}.dsh-sched-detail{padding:12px 14px 14px;display:flex;flex-direction:column;gap:10px;}.dsh-sched-detail-title{font-size:16px;font-weight:600;line-height:1.5;word-break:break-word;}.dsh-sched-detail-pills{display:flex;gap:5px;flex-wrap:wrap;align-items:center;}.dsh-sched-section{border-top:1px solid rgba(127,127,127,.16);padding-top:8px;display:flex;flex-direction:column;gap:6px;}.dsh-sched-section-label{font-size:11px;font-weight:600;color:rgba(127,127,127,.85);}.dsh-sched-note-full{white-space:pre-wrap;word-break:break-word;line-height:1.6;font-size:13px;background:rgba(127,127,127,.07);border-radius:8px;padding:8px 10px;}.dsh-sched-note-empty{font-size:12px;color:rgba(127,127,127,.7);}.dsh-sched-actions{margin-top:auto;display:flex;gap:6px;flex-wrap:wrap;padding-top:10px;border-top:1px solid rgba(127,127,127,.16);}.dsh-sched-abtn{display:inline-flex;align-items:center;gap:4px;border:1px solid rgba(127,127,127,.35);background:transparent;border-radius:8px;padding:5px 12px;font-size:12px;line-height:1.4;cursor:pointer;color:inherit;}.dsh-sched-abtn:hover{background:rgba(127,127,127,.1);}.dsh-sched-abtn.primary{background:#0969da;border-color:#0969da;color:#fff;}.dsh-sched-abtn.primary:hover{background:#0a5bb8;}.dsh-sched-abtn.danger{color:#d1242f;border-color:rgba(209,36,47,.5);}.dsh-sched-abtn.danger:hover{background:rgba(209,36,47,.08);}.dsh-sched-abtn.danger.confirm{background:#d1242f;border-color:#d1242f;color:#fff;}.dsh-sched-chip.static{cursor:default;}.dsh-sched-tabwrap{position:relative;display:flex;flex-direction:column;height:100%;min-height:0;background:transparent;border:none;border-radius:0;box-shadow:none;}.dsh-sched-tabwrap .dsh-sched-header{font-size:13px;padding:8px 10px;}.dsh-sched-tabwrap .dsh-sched-body{padding:8px 10px 12px;}.dsh-sched-tabwrap .dsh-sched-footer{padding:6px 10px;opacity:.75;}@media (prefers-color-scheme: dark){.dsh-sched-linker{background:#1b1e23;color:#e6e8eb;border-color:rgba(255,255,255,.16);}.dsh-sched-tab.active{background:rgba(86,155,235,.18);border-color:rgba(86,155,235,.55);color:#6cb0f5;}.dsh-sched-addbtn{background:#2f7be0;}.dsh-sched-title.linked,.dsh-sched-chip,.dsh-sched-dayhead.today{color:#6cb0f5;}.dsh-sched-chip{background:rgba(86,155,235,.14);border-color:rgba(86,155,235,.4);}.dsh-sched-wd.on{background:rgba(86,155,235,.2);border-color:#6cb0f5;color:#6cb0f5;}.dsh-sched-input:focus{border-color:rgba(86,155,235,.6);}.dsh-sched-cald.today,.dsh-sched-cald.sel{border-color:#6cb0f5;}.dsh-sched-cald.sel{background:rgba(86,155,235,.2);}.dsh-sched-calnav button{border-color:rgba(255,255,255,.25);}.dsh-sched-addtoggle{color:#6cb0f5;border-color:rgba(86,155,235,.55);background:rgba(86,155,235,.14);}.dsh-sched-addtoggle.active{background:#2f7be0;border-color:#2f7be0;color:#fff;}.dsh-sched-section,.dsh-sched-actions{border-top-color:rgba(255,255,255,.12);}.dsh-sched-note-full{background:rgba(255,255,255,.06);}.dsh-sched-abtn{border-color:rgba(255,255,255,.28);}.dsh-sched-abtn.primary{background:#2f7be0;border-color:#2f7be0;}.dsh-sched-editbtn:hover{color:#6cb0f5;background:rgba(86,155,235,.12);}.dsh-sched-textarea:focus{border-color:rgba(86,155,235,.6);}}.dsh-sched-tabwrap { display: flex; flex-direction: column; height: 100%; min-height: 0; background: transparent; color: inherit; box-sizing: border-box; }.dsh-sched-header { display: flex; align-items: center; justify-content: space-between; padding: 10px 14px; border-bottom: 1px solid var(--dsw-alias-border-l2, rgba(127,127,127,.2)); flex: none; gap: 8px; }.dsh-sched-tabs { display: flex; gap: 4px; }.dsh-sched-tab { border: 1px solid rgba(127,127,127,.3); background: transparent; border-radius: 6px; padding: 3px 9px; font-size: 12px; cursor: pointer; color: inherit; }.dsh-sched-tab.active { background: rgba(9,105,218,.15); border-color: #0969da; color: #0969da; font-weight: 600; }.dsh-sched-addtoggle { border: 1px solid rgba(9,105,218,.5); background: rgba(9,105,218,.08); color: #0969da; border-radius: 6px; padding: 3px 9px; font-size: 12px; cursor: pointer; white-space: nowrap; }.dsh-sched-addtoggle.active { background: #0969da; color: #fff; }.dsh-sched-body { flex: 1; min-height: 0; overflow-y: auto; padding: 12px 14px; }.dsh-sched-footer { padding: 8px 14px; border-top: 1px solid var(--dsw-alias-border-l2, rgba(127,127,127,.18)); font-size: 11px; color: rgba(127,127,127,.75); display: flex; justify-content: space-between; flex: none; }.dsh-sched-header-btn { display: inline-flex; align-items: center; justify-content: center; width: 28px; height: 28px; padding: 0; background: none; border: none; border-radius: 6px; color: var(--dsw-alias-label-secondary, inherit); cursor: pointer; font-size: 14px; }.dsh-sched-header-btn:hover { background: var(--dsw-alias-interactive-bg-hover, rgba(127,127,127,.12)); color: var(--dsw-alias-label-primary, inherit); }/* 四象限网格 */.dsh-sched-matrix { display: grid; grid-template-columns: 1fr 1fr; grid-template-rows: 1fr 1fr; gap: 8px; height: 100%; min-height: 480px; box-sizing: border-box; }.dsh-sched-qbox { display: flex; flex-direction: column; border-radius: 8px; border: 1px dashed rgba(127,127,127,.3); background: rgba(127,127,127,.04); padding: 8px; min-height: 0; overflow: hidden; transition: border-color .15s, background .15s; }.dsh-sched-qbox.dragover { border-color: #0969da !important; border-style: solid !important; background: rgba(9,105,218,.12) !important; }.dsh-sched-qhead { display: flex; align-items: center; justify-content: space-between; padding-bottom: 4px; margin-bottom: 6px; border-bottom: 1px solid rgba(127,127,127,.15); flex: none; }.dsh-sched-qtitle { font-size: 11px; font-weight: 700; display: flex; align-items: center; gap: 4px; }.dsh-sched-qsubtitle { font-size: 9px; color: rgba(127,127,127,.7); margin-left: 3px; font-weight: 400; }.dsh-sched-qcnt { font-size: 10px; padding: 1px 5px; border-radius: 10px; background: rgba(127,127,127,.15); font-weight: 600; }.dsh-sched-qlist { display: flex; flex-direction: column; gap: 5px; flex: 1; overflow-y: auto; padding-right: 2px; min-height: 0; }.dsh-sched-qcard { display: flex; align-items: center; gap: 5px; padding: 6px 7px; background: rgba(127,127,127,.08); border: 1px solid rgba(127,127,127,.18); border-radius: 6px; cursor: grab; user-select: none; font-size: 11px; transition: box-shadow .15s, transform .1s; }.dsh-sched-qcard:hover { border-color: rgba(127,127,127,.45); background: rgba(127,127,127,.12); box-shadow: 0 2px 5px rgba(0,0,0,.08); }.dsh-sched-qcard:active { cursor: grabbing; }.dsh-sched-qcard.dragging { opacity: .35; transform: scale(0.98); }.dsh-sched-qcard.done { opacity: .5; text-decoration: line-through; }.dsh-sched-qcard .qhandle { color: rgba(127,127,127,.45); font-size: 12px; cursor: grab; flex: none; }.dsh-sched-qcard .qtitle { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; cursor: pointer; }.dsh-sched-qcard .qtime { font-size: 9px; padding: 1px 4px; border-radius: 3px; background: rgba(127,127,127,.15); flex: none; }.dsh-sched-qempty { flex: 1; display: flex; align-items: center; justify-content: center; font-size: 10px; color: rgba(127,127,127,.45); border: 1px dashed rgba(127,127,127,.18); border-radius: 5px; min-height: 40px; }/* 垂直时间轴排程样式 */.dsh-sched-timeline { display: flex; flex-direction: column; gap: 14px; min-height: 100%; height: auto; box-sizing: border-box; padding-bottom: 24px; }.dsh-sched-tl-statbar { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; padding: 6px 10px; background: rgba(127,127,127,.08); border: 1px solid rgba(127,127,127,.18); border-radius: 8px; font-size: 11px; flex: none; }.dsh-sched-tl-pill { display: inline-flex; align-items: center; gap: 4px; padding: 2px 8px; border-radius: 12px; background: rgba(127,127,127,.12); font-weight: 500; }.dsh-sched-tl-pill.warn { background: rgba(207,34,46,.15); color: #cf222e; font-weight: 600; }.dsh-sched-tl-axis { position: relative; display: flex; flex-direction: column; gap: 12px; padding-left: 18px; border-left: 2px solid rgba(127,127,127,.25); margin-left: 12px; margin-top: 6px; flex: none; }.dsh-sched-tl-node { position: relative; flex: none; width: 100%; box-sizing: border-box; }.dsh-sched-tl-dot { position: absolute; left: -24px; top: 12px; width: 10px; height: 10px; border-radius: 50%; background: #0969da; border: 2px solid var(--dsw-alias-bg-canvas, #1f2328); box-sizing: border-box; z-index: 2; }.dsh-sched-tl-dot.conflict { background: #cf222e; }.dsh-sched-tl-dot.free { background: rgba(127,127,127,.4); width: 8px; height: 8px; left: -23px; }.dsh-sched-tl-card { display: flex; flex-direction: column; gap: 6px; padding: 10px 12px; background: rgba(127,127,127,.08); border: 1px solid rgba(127,127,127,.2); border-radius: 8px; font-size: 12px; box-sizing: border-box; word-break: break-word; transition: all .15s; }.dsh-sched-tl-card:hover { border-color: rgba(127,127,127,.45); background: rgba(127,127,127,.12); box-shadow: 0 2px 8px rgba(0,0,0,.1); }.dsh-sched-tl-card.conflict { border-color: #cf222e; background: rgba(207,34,46,.08); }.dsh-sched-tl-card.done { opacity: .55; text-decoration: line-through; }.dsh-sched-tl-topline { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 6px; }.dsh-sched-tl-time { font-family: monospace; font-weight: 700; font-size: 12px; color: #0969da; display: inline-flex; align-items: center; gap: 6px; }.dsh-sched-tl-dur { font-size: 10px; color: rgba(127,127,127,.75); font-weight: normal; }.dsh-sched-tl-warn { font-size: 10px; color: #cf222e; background: rgba(207,34,46,.12); padding: 4px 8px; border-radius: 4px; margin-top: 4px; font-weight: 600; display: flex; align-items: center; gap: 4px; word-break: break-word; }.dsh-sched-tl-free-box { display: flex; align-items: center; justify-content: space-between; padding: 4px 8px; border: 1px dashed rgba(127,127,127,.3); border-radius: 6px; font-size: 11px; color: rgba(127,127,127,.75); background: rgba(127,127,127,.02); }.dsh-sched-tl-free-btn { border: none; background: transparent; color: #0969da; cursor: pointer; font-size: 10px; padding: 1px 6px; border-radius: 4px; flex: none; }.dsh-sched-tl-free-btn:hover { background: rgba(9,105,218,.12); text-decoration: underline; }.dsh-sched-tl-unscheduled { margin-top: 20px; padding: 10px 12px; background: rgba(127,127,127,.04); border: 1px solid rgba(127,127,127,.18); border-radius: 8px; flex: none; clear: both; }.dsh-sched-tl-un-header { font-size: 12px; font-weight: 600; color: inherit; display: flex; align-items: center; justify-content: space-between; cursor: pointer; user-select: none; margin-bottom: 6px; }.dsh-sched-tl-un-list { display: flex; flex-direction: column; gap: 4px; margin-top: 6px; }'
 
 function injectStyles(css) {
   const el = document.createElement('style')
@@ -142,7 +142,16 @@ function apply(ctx) {
       }, titleOf(sessionsState, sid)))
     }
     const meta = []
-    if (item.time) meta.push(React.createElement('span', { key: 't', className: 'dsh-sched-pill' }, item.time))
+    const qLabels = { q1: '🔴 重要紧急', q2: '🟡 重要不紧急', q3: '🔵 紧急不重要', q4: '🟢 不重要不紧急' }
+    if (item.quadrant && qLabels[item.quadrant]) {
+      meta.push(React.createElement('span', { key: 'q', className: 'dsh-sched-pill' }, qLabels[item.quadrant]))
+    }
+    const tb = parseTimeBlock(item)
+    if (tb.hasTime) {
+      meta.push(React.createElement('span', { key: 't', className: 'dsh-sched-pill' }, tb.startTime + (tb.isRange ? ' - ' + tb.endTime : '')))
+    } else if (item.time) {
+      meta.push(React.createElement('span', { key: 't', className: 'dsh-sched-pill' }, item.time))
+    }
     const rl = recurringLabel(item)
     if (rl) meta.push(React.createElement('span', { key: 'r', className: 'dsh-sched-pill' }, rl))
     if (item.carryOver && item.recurring === 'once') {
@@ -204,12 +213,14 @@ function apply(ctx) {
 
   // ---- 添加表单(默认折叠,由头部「+ 添加」展开)----
   function AddForm(props) {
-    const { onMutate, onCancel } = props
+    const { onMutate, onCancel, initialStartTime, initialEndTime } = props
     const [title, setTitle] = React.useState('')
     const [date, setDate] = React.useState('')
     const [recurring, setRecurring] = React.useState('once')
     const [weekdays, setWeekdays] = React.useState([])
-    const [time, setTime] = React.useState('')
+    const [startTime, setStartTime] = React.useState(initialStartTime || '')
+    const [endTime, setEndTime] = React.useState(initialEndTime || '')
+    const [quadrant, setQuadrant] = React.useState('q2')
     const [note, setNote] = React.useState('')
     const [carryOver, setCarryOver] = React.useState(false)
     function toggleWd(n) {
@@ -218,16 +229,22 @@ function apply(ctx) {
     async function add() {
       const t = title.trim()
       if (t === '') return
+      const s = startTime.trim()
+      const e = endTime.trim()
+      const timeVal = s ? (e ? s + '-' + e : s) : undefined
       await onMutate('add', {
         title: t,
         recurring,
         date: date || undefined,
         weekdays: recurring === 'weekly' ? weekdays.slice() : undefined,
-        time: time || undefined,
+        time: timeVal,
+        startTime: s || undefined,
+        endTime: e || undefined,
+        quadrant,
         note: note || undefined,
         carryOver: recurring === 'once' ? carryOver : undefined,
       })
-      setTitle(''); setDate(''); setRecurring('once'); setWeekdays([]); setTime(''); setNote(''); setCarryOver(false)
+      setTitle(''); setDate(''); setRecurring('once'); setWeekdays([]); setStartTime(''); setEndTime(''); setQuadrant('q2'); setNote(''); setCarryOver(false)
       onCancel()
     }
     const opts = []
@@ -246,10 +263,29 @@ function apply(ctx) {
       React.createElement('option', { value: 'weekly' }, '每周'),
     ))
     if (recurring === 'weekly') opts.push(React.createElement('span', { key: 'wd' }, renderWeekdayPicker(weekdays, toggleWd)))
+    
+    // 起止时间排程输入框
     opts.push(React.createElement('input', {
-      key: 'time', type: 'time', className: 'dsh-sched-input', style: { flex: 'none', width: 104 },
-      value: time, onChange: (e) => setTime(e.target.value),
+      key: 'st', type: 'time', className: 'dsh-sched-input', style: { flex: 'none', width: 95 },
+      title: '起始时间', value: startTime, onChange: (e) => setStartTime(e.target.value),
     }))
+    opts.push(React.createElement('span', { key: 't_sep', style: { fontSize: 11, opacity: .7 } }, '~'))
+    opts.push(React.createElement('input', {
+      key: 'et', type: 'time', className: 'dsh-sched-input', style: { flex: 'none', width: 95 },
+      title: '结束时间(可选)', value: endTime, onChange: (e) => setEndTime(e.target.value),
+    }))
+
+    // 象限选择
+    opts.push(React.createElement('select', {
+      key: 'quad', className: 'dsh-sched-input', style: { flex: 'none' },
+      value: quadrant, onChange: (e) => setQuadrant(e.target.value),
+    },
+      React.createElement('option', { value: 'q1' }, '🔴 重要 · 紧急'),
+      React.createElement('option', { value: 'q2' }, '🟡 重要 · 不紧急'),
+      React.createElement('option', { value: 'q3' }, '🔵 紧急 · 不重要'),
+      React.createElement('option', { value: 'q4' }, '🟢 不重要 · 不紧急'),
+    ))
+
     if (recurring === 'once') {
       opts.push(React.createElement('label', {
         key: 'carry', style: { display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: 12, cursor: 'pointer' },
@@ -300,11 +336,21 @@ function apply(ctx) {
     const doneToday = !!doneMap[relDate]
     const rollovers = Array.isArray(item.rolloverDates) ? item.rolloverDates.slice().sort() : []
     const pills = []
+    const qLabels = { q1: '🔴 重要紧急', q2: '🟡 重要不紧急', q3: '🔵 紧急不重要', q4: '🟢 不重要不紧急' }
+    if (item.quadrant && qLabels[item.quadrant]) {
+      pills.push(React.createElement('span', { key: 'q', className: 'dsh-sched-pill' }, qLabels[item.quadrant]))
+    }
     const rl = recurringLabel(item)
     pills.push(React.createElement('span', { key: 'r', className: 'dsh-sched-pill' },
       rl || '一次性' + (item.recurring === 'once' && item.date ? ' · ' + item.date : '')))
     if (item.recurring === 'once' && rl) pills.push(React.createElement('span', { key: 'd', className: 'dsh-sched-pill' }, item.date))
-    if (item.time) pills.push(React.createElement('span', { key: 't', className: 'dsh-sched-pill' }, item.time))
+    const tb = parseTimeBlock(item)
+    if (tb.hasTime) {
+      pills.push(React.createElement('span', { key: 't', className: 'dsh-sched-pill' },
+        tb.startTime + (tb.isRange ? ' - ' + tb.endTime : '') + ' (' + formatDuration(tb.durationMinutes) + ')'))
+    } else if (item.time) {
+      pills.push(React.createElement('span', { key: 't', className: 'dsh-sched-pill' }, item.time))
+    }
     if (item.carryOver && item.recurring === 'once') pills.push(React.createElement('span', { key: 'co', className: 'dsh-sched-pill' }, '未完成自动顺延'))
     const chips = []
     for (let i = 0; i < links.length; i++) {
@@ -375,11 +421,14 @@ function apply(ctx) {
   // ---- 编辑表单 ----
   function EditForm(props) {
     const { item, onMutate, onCancel } = props
+    const tb = parseTimeBlock(item)
     const [title, setTitle] = React.useState(item.title || '')
     const [date, setDate] = React.useState(item.recurring === 'once' ? (item.date || '') : '')
     const [recurring, setRecurring] = React.useState(item.recurring || 'once')
     const [weekdays, setWeekdays] = React.useState(Array.isArray(item.weekdays) ? item.weekdays.slice().sort() : [])
-    const [time, setTime] = React.useState(item.time || '')
+    const [startTime, setStartTime] = React.useState(item.startTime || tb.startTime || '')
+    const [endTime, setEndTime] = React.useState(item.endTime || (tb.isRange ? tb.endTime : '') || '')
+    const [quadrant, setQuadrant] = React.useState(item.quadrant || 'q2')
     const [note, setNote] = React.useState(item.note || '')
     const [carryOver, setCarryOver] = React.useState(item.carryOver === true)
     function toggleWd(n) {
@@ -388,12 +437,18 @@ function apply(ctx) {
     async function save() {
       const t = title.trim()
       if (t === '') return
+      const s = startTime.trim()
+      const e = endTime.trim()
+      const timeVal = s ? (e ? s + '-' + e : s) : undefined
       const payload = {
         id: item.id,
         title: t,
         recurring,
         weekdays: recurring === 'weekly' ? weekdays.slice() : undefined,
-        time: time || undefined,
+        startTime: s || undefined,
+        endTime: e || undefined,
+        time: timeVal,
+        quadrant,
         note,
         carryOver: recurring === 'once' ? carryOver : false,
       }
@@ -417,10 +472,29 @@ function apply(ctx) {
       React.createElement('option', { value: 'weekly' }, '每周'),
     ))
     if (recurring === 'weekly') opts.push(React.createElement('span', { key: 'wd' }, renderWeekdayPicker(weekdays, toggleWd)))
+    
+    // 起止时间输入
     opts.push(React.createElement('input', {
-      key: 'time', type: 'time', className: 'dsh-sched-input', style: { flex: 'none', width: 104 },
-      value: time, onChange: (e) => setTime(e.target.value),
+      key: 'st', type: 'time', className: 'dsh-sched-input', style: { flex: 'none', width: 95 },
+      title: '起始时间', value: startTime, onChange: (e) => setStartTime(e.target.value),
     }))
+    opts.push(React.createElement('span', { key: 't_sep', style: { fontSize: 11, opacity: .7 } }, '~'))
+    opts.push(React.createElement('input', {
+      key: 'et', type: 'time', className: 'dsh-sched-input', style: { flex: 'none', width: 95 },
+      title: '结束时间(可选)', value: endTime, onChange: (e) => setEndTime(e.target.value),
+    }))
+
+    // 象限选择
+    opts.push(React.createElement('select', {
+      key: 'quad', className: 'dsh-sched-input', style: { flex: 'none' },
+      value: quadrant, onChange: (e) => setQuadrant(e.target.value),
+    },
+      React.createElement('option', { value: 'q1' }, '🔴 重要 · 紧急'),
+      React.createElement('option', { value: 'q2' }, '🟡 重要 · 不紧急'),
+      React.createElement('option', { value: 'q3' }, '🔵 紧急 · 不重要'),
+      React.createElement('option', { value: 'q4' }, '🟢 不重要 · 不紧急'),
+    ))
+
     if (recurring === 'once') {
       opts.push(React.createElement('label', {
         key: 'carry', style: { display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: 12, cursor: 'pointer' },
@@ -546,12 +620,206 @@ function apply(ctx) {
     )
   }
 
+  
+  const QUADRANTS = [
+    { id: 'q1', title: '重要 · 紧急', subtitle: '立即执行', color: '#cf222e', dot: '🔴' },
+    { id: 'q2', title: '重要 · 不紧急', subtitle: '规划推进', color: '#0969da', dot: '🟡' },
+    { id: 'q3', title: '紧急 · 不重要', subtitle: '快速交付', color: '#d97706', dot: '🔵' },
+    { id: 'q4', title: '不重要 · 不紧急', subtitle: '归档消减', color: '#1a7f37', dot: '🟢' },
+  ]
+
+  function MatrixView(props) {
+    const data = props.data
+    const today = props.today
+    const onMutate = props.onMutate
+    const onOpenDetail = props.onOpenDetail
+    const [draggingId, setDraggingId] = React.useState(null)
+    const [dropTarget, setDropTarget] = React.useState(null)
+
+    const rows = rowsFor(data, today)
+    const buckets = { q1: [], q2: [], q3: [], q4: [] }
+    for (let i = 0; i < rows.length; i++) {
+      const r = rows[i]
+      const q = r.item.quadrant && buckets[r.item.quadrant] ? r.item.quadrant : 'q2'
+      buckets[q].push(r)
+    }
+
+    return React.createElement('div', { className: 'dsh-sched-matrix' },
+      QUADRANTS.map((q) => {
+        const isOver = dropTarget === q.id
+        const items = buckets[q.id]
+        return React.createElement('div', {
+          key: q.id,
+          className: 'dsh-sched-qbox' + (isOver ? ' dragover' : ''),
+          onDragOver: (e) => {
+            e.preventDefault()
+            e.dataTransfer.dropEffect = 'move'
+            if (dropTarget !== q.id) setDropTarget(q.id)
+          },
+          onDragLeave: (e) => {
+            if (e.currentTarget.contains(e.relatedTarget)) return
+            if (dropTarget === q.id) setDropTarget(null)
+          },
+          onDrop: async (e) => {
+            e.preventDefault()
+            setDropTarget(null)
+            const id = e.dataTransfer.getData('text/plain') || draggingId
+            if (id) {
+              await onMutate('update', { id, quadrant: q.id })
+            }
+          },
+        },
+          React.createElement('div', { className: 'dsh-sched-qhead' },
+            React.createElement('span', { className: 'dsh-sched-qtitle', style: { color: q.color } },
+              q.dot + ' ' + q.title,
+              React.createElement('span', { className: 'dsh-sched-qsubtitle' }, q.subtitle),
+            ),
+            React.createElement('span', { className: 'dsh-sched-qcnt' }, String(items.length)),
+          ),
+          React.createElement('div', { className: 'dsh-sched-qlist' },
+            items.length === 0
+              ? React.createElement('div', { className: 'dsh-sched-qempty' }, '拖拽任务到此象限')
+              : items.map((r) => {
+                  const isDragging = draggingId === r.item.id
+                  return React.createElement('div', {
+                    key: r.item.id,
+                    className: 'dsh-sched-qcard' + (r.done ? ' done' : '') + (isDragging ? ' dragging' : ''),
+                    draggable: true,
+                    onDragStart: (e) => {
+                      setDraggingId(r.item.id)
+                      e.dataTransfer.setData('text/plain', r.item.id)
+                      e.dataTransfer.effectAllowed = 'move'
+                    },
+                    onDragEnd: () => {
+                      setDraggingId(null)
+                      setDropTarget(null)
+                    },
+                  },
+                    React.createElement('span', { className: 'qhandle', title: '按住拖动' }, '⋮⋮'),
+                    React.createElement('button', {
+                      className: 'dsh-sched-circle' + (r.done ? ' done' : ''),
+                      title: r.done ? '标记未完成' : '标记已完成',
+                      onClick: (e) => {
+                        e.stopPropagation()
+                        onMutate('setDone', { id: r.item.id, date: today, done: !r.done })
+                      },
+                    }, r.done ? '✓' : ''),
+                    React.createElement('span', {
+                      className: 'qtitle',
+                      title: r.item.title + (r.item.note ? ' · ' + r.item.note : ''),
+                      onClick: () => onOpenDetail(r.item.id),
+                    }, r.item.title),
+                    r.item.time ? React.createElement('span', { className: 'qtime' }, r.item.time) : null,
+                  )
+                }),
+          ),
+        )
+      }),
+    )
+  }
+
+  // ---- 垂直时间轴 (Time-blocking) ----
+  function TimelineView(props) {
+    const { data, today, currentSessionId, sessionsState, onMutate, onOpenDetail, onOpenEdit, onScheduleTime } = props
+    const [unscheduledOpen, setUnscheduledOpen] = React.useState(false)
+    const rows = rowsFor(data, today)
+    const schedule = computeTimeSchedule(rows, { startHour: 8, endHour: 22 })
+    const { nodes, unscheduled, stats } = schedule
+
+    const QUADRANT_MAP = {
+      q1: { title: '重要紧急', dot: '🔴', color: '#cf222e' },
+      q2: { title: '重要不紧急', dot: '🟡', color: '#0969da' },
+      q3: { title: '紧急不重要', dot: '🔵', color: '#d97706' },
+      q4: { title: '不重要不紧急', dot: '🟢', color: '#1a7f37' },
+    }
+
+    return React.createElement('div', { className: 'dsh-sched-timeline' },
+      React.createElement('div', { className: 'dsh-sched-tl-statbar' },
+        React.createElement('span', { className: 'dsh-sched-tl-pill' }, '⏱️ 专注 ' + stats.totalBusyText),
+        React.createElement('span', { className: 'dsh-sched-tl-pill' }, '☕ 空闲 ' + stats.totalFreeText),
+        stats.conflictCount > 0
+          ? React.createElement('span', { className: 'dsh-sched-tl-pill warn' }, '⚠️ ' + stats.conflictCount + ' 处时段冲突')
+          : React.createElement('span', { className: 'dsh-sched-tl-pill' }, '✅ 无冲突撞车'),
+      ),
+      React.createElement('div', { className: 'dsh-sched-tl-axis' },
+        nodes.length === 0
+          ? React.createElement('div', { className: 'dsh-sched-empty' }, '今日暂无带具体时间的日程')
+          : nodes.map((n, idx) => {
+              if (n.type === 'free') {
+                return React.createElement('div', { key: 'free_' + idx, className: 'dsh-sched-tl-node' },
+                  React.createElement('div', { className: 'dsh-sched-tl-dot free' }),
+                  React.createElement('div', { className: 'dsh-sched-tl-free-box' },
+                    React.createElement('span', null, '☕ 空闲 ' + n.startTime + ' - ' + n.endTime + ' (' + n.durationText + ')'),
+                    onScheduleTime ? React.createElement('button', {
+                      className: 'dsh-sched-tl-free-btn',
+                      onClick: () => onScheduleTime(n.startTime, n.endTime),
+                    }, '+ 排程') : null,
+                  ),
+                )
+              }
+              const isConflict = n.conflicts && n.conflicts.length > 0
+              const qInfo = QUADRANT_MAP[n.item.quadrant] || QUADRANT_MAP.q2
+              return React.createElement('div', { key: n.item.id, className: 'dsh-sched-tl-node' },
+                React.createElement('div', { className: 'dsh-sched-tl-dot' + (isConflict ? ' conflict' : '') }),
+                React.createElement('div', { className: 'dsh-sched-tl-card' + (isConflict ? ' conflict' : '') + (n.done ? ' done' : '') },
+                  React.createElement('div', { className: 'dsh-sched-tl-topline' },
+                    React.createElement('div', { className: 'dsh-sched-tl-time' },
+                      React.createElement('button', {
+                        className: 'dsh-sched-circle' + (n.done ? ' done' : ''),
+                        onClick: () => onMutate('setDone', { id: n.item.id, date: today, done: !n.done }),
+                        title: n.done ? '标记未完成' : '标记已完成',
+                      }, n.done ? '✓' : ''),
+                      React.createElement('span', null, n.block.startTime + (n.block.isRange ? ' - ' + n.block.endTime : '')),
+                      React.createElement('span', { className: 'dsh-sched-tl-dur' }, '(' + formatDuration(n.block.durationMinutes) + ')'),
+                    ),
+                    React.createElement('span', { style: { fontSize: 10, color: qInfo.color, fontWeight: 600 } }, qInfo.dot + ' ' + qInfo.title),
+                  ),
+                  React.createElement('div', {
+                    className: 'dsh-sched-title' + (n.done ? ' done' : ''),
+                    style: { cursor: 'pointer', fontWeight: 600, whiteSpace: 'normal', lineHeight: 1.4 },
+                    onClick: () => onOpenDetail(n.item.id),
+                  }, n.item.title),
+                  n.item.note ? React.createElement('div', { className: 'dsh-sched-note', style: { maxWidth: '100%', whiteSpace: 'pre-wrap', lineHeight: 1.4 } }, n.item.note) : null,
+                  isConflict ? React.createElement('div', { className: 'dsh-sched-tl-warn' },
+                    '⚠️ 与「' + n.conflicts.map((c) => c.title + ' ' + (c.time || c.startTime)).join(' / ') + '」时段撞车！',
+                  ) : null,
+                ),
+              )
+            }),
+      ),
+      unscheduled.length > 0 ? React.createElement('div', { className: 'dsh-sched-tl-unscheduled' },
+        React.createElement('div', {
+          className: 'dsh-sched-tl-un-header',
+          onClick: () => setUnscheduledOpen(!unscheduledOpen),
+          title: '点击展开/收起未安排具体时段的待办',
+        },
+          React.createElement('span', null, (unscheduledOpen ? '▾' : '▸') + ' 📋 待安排具体时段 (' + unscheduled.length + ')'),
+          React.createElement('span', { style: { fontSize: 11, opacity: .7 } }, unscheduledOpen ? '收起' : '展开查看'),
+        ),
+        unscheduledOpen ? React.createElement('div', { className: 'dsh-sched-tl-un-list' },
+          unscheduled.map((u) => React.createElement(ScheduleRow, {
+            key: u.item.id,
+            item: u.item,
+            dateStr: today,
+            done: u.done,
+            currentSessionId: currentSessionId,
+            sessionsState: sessionsState,
+            onMutate: onMutate,
+            onOpenDetail: onOpenDetail,
+            onOpenEdit: onOpenEdit,
+          }))
+        ) : null,
+      ) : null,
+    )
+  }
+
   function SchedulePanel(props) {
     const data = useStore(() => store.data)
     const [view, setView] = React.useState('today')
     const [doneCollapsed, setDoneCollapsed] = React.useState(false)
     const [mode, setMode] = React.useState({ type: 'list' })
     const [adding, setAdding] = React.useState(false)
+    const [timeFill, setTimeFill] = React.useState(null)
     const sessionsState = props.useSessions((s) => s)
     // 本面板只作为 better-sidebar 的侧边卡片渲染;visible 由宿主控制,
     // 面板可见期间每 30 秒拉一次数据(其他会话里 agent 工具改了日程也能看到)。
@@ -569,6 +837,10 @@ function apply(ctx) {
     function openDetail(id) { setAdding(false); setMode({ type: 'detail', id }) }
     function openEdit(id) { setAdding(false); setMode({ type: 'edit', id }) }
     function backToList() { setMode({ type: 'list' }) }
+    function onScheduleTime(st, et) {
+      setTimeFill({ startTime: st, endTime: et })
+      setAdding(true)
+    }
 
     // 详情/编辑目标若已被删除(agent 侧改动),回落到列表。
     const itemOf = (id) => data !== null ? data.items.find((i) => i.id === id) : undefined
@@ -616,7 +888,25 @@ function apply(ctx) {
         ) : null,
         doneCollapsed ? null : doneEls,
       )
-    } else if (view === 'week') {
+    } else if (view === 'matrix') {
+        body = React.createElement(MatrixView, {
+          data: data,
+          today: today,
+          onMutate: onMutate,
+          onOpenDetail: openDetail,
+        })
+      } else if (view === 'timeline') {
+        body = React.createElement(TimelineView, {
+          data: data,
+          today: today,
+          currentSessionId: currentSessionId,
+          sessionsState: sessionsState,
+          onMutate: onMutate,
+          onOpenDetail: openDetail,
+          onOpenEdit: openEdit,
+          onScheduleTime: onScheduleTime,
+        })
+      } else if (view === 'week') {
       const monday = mondayOf(today)
       const dayEls = []
       for (let i = 0; i < 7; i++) {
@@ -654,20 +944,30 @@ function apply(ctx) {
     const headerKids = [
       inSubView ? React.createElement('button', { key: 'back', className: 'dsh-sched-backbtn', title: '返回列表', onClick: backToList }, '←') : null,
       !inSubView ? React.createElement('div', { key: 'tabs', className: 'dsh-sched-tabs' },
-        React.createElement('button', { className: 'dsh-sched-tab' + (view === 'today' ? ' active' : ''), onClick: () => { setView('today'); setAdding(false) } }, '今天'),
-        React.createElement('button', { className: 'dsh-sched-tab' + (view === 'week' ? ' active' : ''), onClick: () => { setView('week'); setAdding(false) } }, '本周'),
-        React.createElement('button', { className: 'dsh-sched-tab' + (view === 'history' ? ' active' : ''), onClick: () => { setView('history'); setAdding(false) } }, '历史'),
+        React.createElement('button', { className: 'dsh-sched-tab' + (view === 'today' ? ' active' : ''), onClick: () => { setView('today'); setAdding(false); setTimeFill(null) } }, '今天'),
+        React.createElement('button', { className: 'dsh-sched-tab' + (view === 'matrix' ? ' active' : ''), onClick: () => { setView('matrix'); setAdding(false); setTimeFill(null) } }, '四象限'),
+        React.createElement('button', { className: 'dsh-sched-tab' + (view === 'timeline' ? ' active' : ''), onClick: () => { setView('timeline'); setAdding(false); setTimeFill(null) } }, '时间轴'),
+        React.createElement('button', { className: 'dsh-sched-tab' + (view === 'week' ? ' active' : ''), onClick: () => { setView('week'); setAdding(false); setTimeFill(null) } }, '本周'),
+        React.createElement('button', { className: 'dsh-sched-tab' + (view === 'history' ? ' active' : ''), onClick: () => { setView('history'); setAdding(false); setTimeFill(null) } }, '历史'),
       ) : null,
       !inSubView ? React.createElement('button', {
         key: 'add',
         className: 'dsh-sched-addtoggle' + (adding ? ' active' : ''),
         title: adding ? '收起添加表单' : '添加日程',
-        onClick: () => setAdding(!adding),
+        onClick: () => {
+          if (adding) setTimeFill(null)
+          setAdding(!adding)
+        },
       }, adding ? '收起' : '+ 添加') : null,
     ]
     return React.createElement('div', { className: 'dsh-sched-tabwrap' },
       React.createElement('div', { className: 'dsh-sched-header' }, headerKids),
-      adding && !inSubView ? React.createElement(AddForm, { onMutate: onMutate, onCancel: () => setAdding(false) }) : null,
+      adding && !inSubView ? React.createElement(AddForm, {
+        onMutate: onMutate,
+        onCancel: () => { setAdding(false); setTimeFill(null) },
+        initialStartTime: timeFill ? timeFill.startTime : '',
+        initialEndTime: timeFill ? timeFill.endTime : '',
+      }) : null,
       React.createElement('div', { className: 'dsh-sched-body' }, body),
       React.createElement('div', { className: 'dsh-sched-footer' },
         React.createElement('span', null, '今天 ' + todoCount + ' 待办 · ' + doneCount + ' 已完成'),
@@ -762,25 +1062,75 @@ function apply(ctx) {
   // 主形态:日程 = better-sidebar 侧边卡片的一个 tab。betterSidebar 已在
   // inject 中声明,apply 时必然可用;注册进 tab 注册表后会自动出现在
   // 侧边栏顶部「+」菜单(order 50),从那里即可添加/打开。
-  ctx.effect(() => betterSidebar.registerTab({
-    id: 'dsh-schedule:panel',
-    title: '日程',
-    icon: (size) => React.createElement('span', { style: { fontSize: size, lineHeight: '1' } }, '📅'),
-    order: 50,
-    single: true,
-    // tab 标题旁的角标:今天剩余待办数(数据未拉到时不显示)。
-    badge: () => {
-      const d = store.data
-      if (d === null || d === undefined) return null
-      const rows = rowsFor(d, todayStr())
-      const todo = rows.filter((r) => !r.done).length
-      return todo > 0 ? todo : null
-    },
-    component: (tabProps) => React.createElement(SchedulePanel, {
-      visible: tabProps.visible,
-      useSessions: () => useSessionsSnapshot(tabProps.ctx),
-    }),
-  }), 'dsh-schedule: side-card tab')
+  const SCHEDULE_ID = "dsh-schedule";
+  const SCHEDULE_KIND = "schedule";
+
+  function scheduleTabDefinition() {
+    return {
+      id: SCHEDULE_ID,
+      kind: SCHEDULE_KIND,
+      priority: "extension",
+      title: () => "日程",
+    };
+  }
+
+  function openScheduleColumn() {
+    if (ctx.sidebarRight === undefined || typeof ctx.sidebarRight.openTab !== "function") return false;
+    try {
+      ctx.sidebarRight.openTab(SCHEDULE_KIND);
+      return true;
+    } catch (e) {
+      console.warn("[dsh-schedule] openTab failed:", e);
+      return false;
+    }
+  }
+
+  function ScheduleHeaderButton() {
+    return React.createElement(
+      "button",
+      {
+        className: "dsh-sched-header-btn",
+        type: "button",
+        title: "日程规划",
+        "aria-label": "日程规划",
+        onClick: () => openScheduleColumn(),
+      },
+      "📅"
+    );
+  }
+
+  function SchedulePage() {
+    return React.createElement(SchedulePanel, {
+      visible: true,
+      useSessions: () => (sessionsSvc && sessionsSvc.list ? sessionsSvc.list.getSnapshot() : { current: undefined, byId: {} }),
+    });
+  }
+
+  // 1. 注册原生右侧栏 Tab 类型
+  if (ctx.sidebarRightTabs && typeof ctx.sidebarRightTabs.register === "function") {
+    ctx.effect(() => ctx.sidebarRightTabs.register(scheduleTabDefinition()), "dsh-schedule: tab type");
+  }
+
+  // 2. 注册右侧栏内容页
+  slots.inject("sidebar.right.pane.tab", () =>
+    slots.register(
+      { name: "sidebar.right.pane.tab", key: SCHEDULE_ID },
+      SchedulePage
+    )
+  );
+
+  // 3. 注册右上角会话顶栏图标按钮（并列在动画库/文件夹旁边）
+  slots.inject("conversation.session.header.utilities", () =>
+    slots.register(
+      {
+        name: "conversation.session.header.utilities",
+        id: SCHEDULE_ID,
+        order: 15,
+        label: "日程",
+      },
+      ScheduleHeaderButton
+    )
+  );
 
   // 角标数据保底刷新:每 60 秒拉一次(面板没开时角标也能保持新鲜)。
   if (timerSvc !== undefined && typeof timerSvc.interval === 'function') {
@@ -791,4 +1141,4 @@ function apply(ctx) {
   console.log('[dsh-schedule] client ready, side-card tab registered')
 }
 
-module.exports = { name: 'dsh-schedule-client', inject: ['slots', 'sessions', 'betterSidebar'], apply }
+module.exports = { name: 'dsh-schedule-client', inject: ['slots', 'sidebarRight', 'sidebarRightTabs'], apply }
