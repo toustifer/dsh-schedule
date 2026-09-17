@@ -23,3 +23,11 @@ test('built client bundle registers the documented plugin contract', async () =>
   assert.equal(typeof plugin.apply, 'function')
   assert.ok(Array.isArray(plugin.inject))
 })
+
+test('built client bundle contains drag-schedule classes and drop target styles', () => {
+  const clientCode = readFileSync(new URL('lib/client.js', root), 'utf8')
+  assert.ok(clientCode.includes('.dsh-sched-tl-free-box.dragover'), 'CSS 应包含 free-box.dragover 样式')
+  assert.ok(clientCode.includes('.dsh-sched-tl-dragcard'), 'CSS 应包含 dragcard 样式')
+  assert.ok(clientCode.includes('dsh-sched-tl-dragcard'), 'DOM 应渲染 dragcard 结构')
+  assert.ok(clientCode.includes('dataTransfer.effectAllowed = \'move\''), '应设置拖拽 move 效果')
+})

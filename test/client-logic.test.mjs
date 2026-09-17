@@ -309,3 +309,41 @@ test('logic: computeTimeSchedule 集成 nowMinutes 动态游标', () => {
   const normalSched = L.computeTimeSchedule(rows, { startHour: 10, endHour: 18 })
   assert.equal(normalSched.nodes.some((n) => n.type === 'now'), false)
 })
+
+test('logic: 吸附排程后待办从 unscheduled 进入时间轴节点并重新分割空闲段', () => {
+  const t1 = { id: 't1', title: '早晨例会', time: '09:00-10:00' }
+  const t2 = { id: 't2', title: '待安排的任务' } // 无时间
+
+  const rowsBefore = [{ item: t1 }, { item: t2 }]
+  const sBefore = L.computeTimeSchedule(rowsBefore, { startHour: 9, endHour: 18 })
+
+  // 排程前: t2 在 unscheduled
+  assert.equal(sBefore.unscheduled.length, 1)
+  assert.equal(sBefore.unscheduled[0].item.id, 't2')
+
+  // 空闲段从 10:00 到 18:00
+  const freeNode = sBefore.nodes.find((n) => n.type === 'free')
+  assert.ok(freeNode)
+  assert.equal(freeNode.startTime, '10:00')
+  assert.equal(freeNode.endTime, '18:00')
+
+  // 模拟吸附到空闲段起点 10:00
+  const t2Scheduled = { ...t2, startTime: freeNode.startTime, time: freeNode.startTime }
+  const rowsAfter = [{ item: t1 }, { item: t2Scheduled }]
+  const sAfter = L.computeTimeSchedule(rowsAfter, { startHour: 9, endHour: 18 })
+
+  // 排程后: unscheduled 为空
+  assert.equal(sAfter.unscheduled.length, 0)
+
+  // t2 出现在 nodes 中，单点时间默认 45 分钟 (10:00-10:45)
+  const t2Node = sAfter.nodes.find((n) => n.item && n.item.id === 't2')
+  assert.ok(t2Node)
+  assert.equal(t2Node.block.startTime, '10:00')
+  assert.equal(t2Node.block.endTime, '10:45')
+
+  // 后续空闲段被截为 10:45 - 18:00
+  const nextFree = sAfter.nodes.find((n) => n.type === 'free')
+  assert.ok(nextFree)
+  assert.equal(nextFree.startTime, '10:45')
+  assert.equal(nextFree.endTime, '18:00')
+})
