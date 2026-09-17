@@ -1219,10 +1219,21 @@ function apply(ctx) {
   }
 
   function SchedulePage() {
+    const sessions = ctx.get('sessions')
+    const useSessions = React.useCallback((selector) => {
+      const getSnap = () => (sessions && sessions.list ? sessions.list.getSnapshot() : { current: undefined, byId: {} })
+      const [state, setState] = React.useState(getSnap)
+      React.useEffect(() => {
+        if (!sessions || !sessions.list || typeof sessions.list.subscribe !== 'function') return undefined
+        return sessions.list.subscribe(() => setState(getSnap()))
+      }, [sessions])
+      return selector ? selector(state) : state
+    }, [sessions])
+
     return React.createElement(SchedulePanel, {
       visible: true,
-      useSessions: () => (sessionsSvc && sessionsSvc.list ? sessionsSvc.list.getSnapshot() : { current: undefined, byId: {} }),
-    });
+      useSessions,
+    })
   }
 
   // 1. 注册原生右侧栏 Tab 类型
@@ -1260,4 +1271,4 @@ function apply(ctx) {
   console.log('[dsh-schedule] client ready, side-card tab registered')
 }
 
-module.exports = { name: 'dsh-schedule-client', inject: ['slots', 'sidebarRight', 'sidebarRightTabs'], apply }
+module.exports = { name: 'dsh-schedule-client', inject: ['slots', 'sessions', 'sidebarRight', 'sidebarRightTabs'], apply }
