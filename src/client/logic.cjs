@@ -345,8 +345,13 @@ function computeTimeSchedule(rows, options = {}) {
     })
   }
 
+  let resultNodes = nodes
+  if (typeof options.nowMinutes === 'number' && !isNaN(options.nowMinutes)) {
+    resultNodes = injectNowNode(nodes, options.nowMinutes)
+  }
+
   return {
-    nodes,
+    nodes: resultNodes,
     unscheduled,
     stats: {
       totalScheduled: timed.length,
@@ -360,6 +365,129 @@ function computeTimeSchedule(rows, options = {}) {
       windowEnd: minutesToTime(windowEnd),
     },
   }
+}
+
+/** 获取当前系统的分钟数(0-1439), 兼容传入 Date 对象进行测试 */
+function getCurrentMinutes(d) {
+  const date = d instanceof Date ? d : new Date()
+  return date.getHours() * 60 + date.getMinutes()
+}
+
+/**
+ * 计算今天某个任务的逾期分钟数:
+ * - 若任务已完成 (done === true) 或无排期时间, 逾期为 0;
+ * - 若任务为时间区间 (如 14:00-15:00), 超过结束时间算逾期;
+ * - 若任务为单点时间 (如 14:00), 超过起始时间算逾期;
+ * - 未超过或未开始返回 0.
+ */
+function getOverdueMinutes(itemOrRow, nowMinutes) {
+  if (!itemOrRow || typeof itemOrRow !== 'object') return 0
+  const row = itemOrRow.item !== undefined ? itemOrRow : null
+  const item = row ? row.item : itemOrRow
+  const isDone = (row && typeof row.done === 'boolean') ? row.done : !!item.done
+  if (isDone) return 0
+
+  const nowM = typeof nowMinutes === 'number' && !isNaN(nowMinutes) ? nowMinutes : getCurrentMinutes()
+  const block = parseTimeBlock(item)
+  if (!block.hasTime || block.startMinutes === null) return 0
+
+  const threshold = block.isRange ? block.endMinutes : block.startMinutes
+  if (nowM > threshold) {
+    return Math.floor(nowM - threshold)
+  }
+  return 0
+}
+
+/** 格式化逾期文案: 如 23 -> "⚠️ 已逾期 23分钟" */
+function formatOverdueText(overdueMinutes) {
+  if (!overdueMinutes || overdueMinutes <= 0) return ''
+  return '⚠️ 已逾期 ' + formatDuration(overdueMinutes)
+}
+
+/**
+ * 在垂直时间轴节点序列中插入 Now 当前时间动态游标节点:
+ * 根据 nowMinutes 的位置, 将其插入到相应时段, 并在遇到跨越该时刻的空闲段时智能拆分前后空闲.
+ */
+function injectNowNode(nodes, nowMinutes) {
+  if (!Array.isArray(nodes)) return []
+  if (typeof nowMinutes !== 'number' || isNaN(nowMinutes)) return nodes.slice()
+
+  const nowTime = minutesToTime(nowMinutes)
+  const nowNode = {
+    type: 'now',
+    time: nowTime,
+    minutes: nowMinutes,
+    label: nowTime + ' 现在',
+  }
+
+  const result = []
+  let inserted = false
+
+  for (let i = 0; i < nodes.length; i++) {
+    const n = nodes[i]
+
+    if (inserted) {
+      result.push(n)
+      continue
+    }
+
+    if (n.type === 'free') {
+      if (nowMinutes <= n.startMinutes) {
+        result.push(nowNode)
+        result.push(n)
+        inserted = true
+      } else if (nowMinutes > n.startMinutes && nowMinutes < n.endMinutes) {
+        const preDur = nowMinutes - n.startMinutes
+        const postDur = n.endMinutes - nowMinutes
+
+        if (preDur >= 5) {
+          result.push({
+            type: 'free',
+            startTime: n.startTime,
+            endTime: nowTime,
+            startMinutes: n.startMinutes,
+            endMinutes: nowMinutes,
+            durationMinutes: preDur,
+            durationText: formatDuration(preDur),
+          })
+        }
+
+        result.push(nowNode)
+        inserted = true
+
+        if (postDur >= 5) {
+          result.push({
+            type: 'free',
+            startTime: nowTime,
+            endTime: n.endTime,
+            startMinutes: nowMinutes,
+            endMinutes: n.endMinutes,
+            durationMinutes: postDur,
+            durationText: formatDuration(postDur),
+          })
+        }
+      } else {
+        result.push(n)
+      }
+    } else if (n.type === 'task') {
+      const startM = n.block.startMinutes
+      if (nowMinutes < startM) {
+        result.push(nowNode)
+        result.push(n)
+        inserted = true
+      } else {
+        result.push(n)
+      }
+    } else {
+      result.push(n)
+    }
+  }
+
+  if (!inserted) {
+    result.push(nowNode)
+  }
+
+  return result
 }
 
 /** 连续完成天数:今天没做则从昨天起算。 */
@@ -376,5 +504,6 @@ if (typeof window === 'undefined' && typeof module !== 'undefined' && module.exp
     pad, fmt, todayStr, dateOf, isoDay, addDays, mondayOf, WEEKDAY_NAMES,
     matches, recurringLabel, sortRows, rowsFor, completedBetween, hasDoneOn, streakOf,
     minutesToTime, minutesOfDay, parseTimeBlock, formatDuration, detectTimeConflicts, computeTimeSchedule,
+    getCurrentMinutes, getOverdueMinutes, formatOverdueText, injectNowNode,
   }
 }

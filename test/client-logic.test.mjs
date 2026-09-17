@@ -205,3 +205,107 @@ test('logic: computeTimeSchedule 插入空闲段与按序排列', () => {
   assert.equal(schedule.stats.totalScheduled, 2)
   assert.equal(schedule.stats.totalUnscheduled, 1)
 })
+
+test('logic: getCurrentMinutes 解析当前系统分钟数与特定 Date', () => {
+  // 传入特定 Date: 15:23 -> 15 * 60 + 23 = 923
+  const d1 = new Date(2026, 7, 20, 15, 23, 0)
+  assert.equal(L.getCurrentMinutes(d1), 923)
+
+  // 00:05 -> 5
+  const d2 = new Date(2026, 7, 20, 0, 5, 0)
+  assert.equal(L.getCurrentMinutes(d2), 5)
+
+  // 缺省参数返回当前系统合法分钟数 (0 <= m < 1440)
+  const now = L.getCurrentMinutes()
+  assert.equal(typeof now, 'number')
+  assert.equal(now >= 0 && now < 1440, true)
+})
+
+test('logic: getOverdueMinutes 计算单点与区间任务的逾期时长', () => {
+  // 1. 单点时间: 14:00 (840)
+  const singleTask = { id: 's1', title: '需求对齐', time: '14:00' }
+  // 当前 14:23 (863): 逾期 863 - 840 = 23 分钟
+  assert.equal(L.getOverdueMinutes(singleTask, 863), 23)
+  // 当前 13:50 (830): 尚未逾期
+  assert.equal(L.getOverdueMinutes(singleTask, 830), 0)
+  // 当前刚好 14:00: 0
+  assert.equal(L.getOverdueMinutes(singleTask, 840), 0)
+
+  // 2. 时段区间: 14:00-15:00 (840-900)
+  const rangeTask = { id: 'r1', title: '架构评审', time: '14:00-15:00' }
+  // 当前 14:23 (863): 处于时段内, 不逾期
+  assert.equal(L.getOverdueMinutes(rangeTask, 863), 0)
+  // 当前 15:23 (923): 超过时段结束时间 15:00 (900) 23 分钟
+  assert.equal(L.getOverdueMinutes(rangeTask, 923), 23)
+
+  // 3. 已完成任务 (done === true): 不算逾期
+  assert.equal(L.getOverdueMinutes({ ...singleTask, done: true }, 863), 0)
+  // 包装行 { item, done: true }
+  assert.equal(L.getOverdueMinutes({ item: singleTask, done: true }, 863), 0)
+  // 包装行 { item, done: false }
+  assert.equal(L.getOverdueMinutes({ item: singleTask, done: false }, 863), 23)
+
+  // 4. 无时间任务
+  assert.equal(L.getOverdueMinutes({ id: 'none', title: '看文章' }, 863), 0)
+})
+
+test('logic: formatOverdueText 格式化逾期友好文本', () => {
+  assert.equal(L.formatOverdueText(23), '⚠️ 已逾期 23分钟')
+  assert.equal(L.formatOverdueText(75), '⚠️ 已逾期 1小时15分')
+  assert.equal(L.formatOverdueText(0), '')
+  assert.equal(L.formatOverdueText(-10), '')
+  assert.equal(L.formatOverdueText(null), '')
+})
+
+test('logic: injectNowNode 智能插入 Now 游标节点与拆分空闲段', () => {
+  const nodes = [
+    { type: 'task', block: { startMinutes: 540, endMinutes: 600 } }, // 09:00-10:00
+    { type: 'free', startTime: '10:00', endTime: '14:00', startMinutes: 600, endMinutes: 840, durationMinutes: 240, durationText: '4小时' },
+    { type: 'task', block: { startMinutes: 840, endMinutes: 900 } }, // 14:00-15:00
+  ]
+
+  // 当 now 在 11:30 (690, 落在 10:00-14:00 空闲段中间):
+  // 拆分成 10:00-11:30 free (90分) -> now (11:30) -> 11:30-14:00 free (150分)
+  const result = L.injectNowNode(nodes, 690)
+  assert.equal(result.length, 5)
+  assert.equal(result[0].type, 'task')
+
+  assert.equal(result[1].type, 'free')
+  assert.equal(result[1].startTime, '10:00')
+  assert.equal(result[1].endTime, '11:30')
+  assert.equal(result[1].durationMinutes, 90)
+
+  assert.equal(result[2].type, 'now')
+  assert.equal(result[2].time, '11:30')
+  assert.equal(result[2].label, '11:30 现在')
+
+  assert.equal(result[3].type, 'free')
+  assert.equal(result[3].startTime, '11:30')
+  assert.equal(result[3].endTime, '14:00')
+  assert.equal(result[3].durationMinutes, 150)
+
+  assert.equal(result[4].type, 'task')
+
+  // 空列表
+  const emptyRes = L.injectNowNode([], 923)
+  assert.equal(emptyRes.length, 1)
+  assert.equal(emptyRes[0].type, 'now')
+  assert.equal(emptyRes[0].time, '15:23')
+  assert.equal(emptyRes[0].label, '15:23 现在')
+})
+
+test('logic: computeTimeSchedule 集成 nowMinutes 动态游标', () => {
+  const rows = [
+    { item: { id: 't1', title: '下午评审', time: '14:00-15:00' } },
+  ]
+  // 传入 nowMinutes = 15:23 (923)
+  const schedule = L.computeTimeSchedule(rows, { startHour: 10, endHour: 18, nowMinutes: 923 })
+  const nowNode = schedule.nodes.find((n) => n.type === 'now')
+  assert.ok(nowNode, '应生成 now 节点')
+  assert.equal(nowNode.time, '15:23')
+  assert.equal(nowNode.label, '15:23 现在')
+
+  // 不传 nowMinutes 则不产生 now 节点
+  const normalSched = L.computeTimeSchedule(rows, { startHour: 10, endHour: 18 })
+  assert.equal(normalSched.nodes.some((n) => n.type === 'now'), false)
+})
