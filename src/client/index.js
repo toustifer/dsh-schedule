@@ -633,8 +633,7 @@ function apply(ctx) {
     const today = props.today
     const onMutate = props.onMutate
     const onOpenDetail = props.onOpenDetail
-    const [draggingId, setDraggingId] = React.useState(null)
-    const [dropTarget, setDropTarget] = React.useState(null)
+    const [selectedItemId, setSelectedItemId] = React.useState(null)
 
     const rows = rowsFor(data, today)
     const buckets = { q1: [], q2: [], q3: [], q4: [] }
@@ -644,29 +643,20 @@ function apply(ctx) {
       buckets[q].push(r)
     }
 
+    const handleSelectOrMove = async (targetQuadrant) => {
+      if (!selectedItemId) return
+      await onMutate('update', { id: selectedItemId, quadrant: targetQuadrant })
+      setSelectedItemId(null)
+    }
+
     return React.createElement('div', { className: 'dsh-sched-matrix' },
       QUADRANTS.map((q) => {
-        const isOver = dropTarget === q.id
         const items = buckets[q.id]
         return React.createElement('div', {
           key: q.id,
-          className: 'dsh-sched-qbox' + (isOver ? ' dragover' : ''),
-          onDragOver: (e) => {
-            e.preventDefault()
-            e.dataTransfer.dropEffect = 'move'
-            if (dropTarget !== q.id) setDropTarget(q.id)
-          },
-          onDragLeave: (e) => {
-            if (e.currentTarget.contains(e.relatedTarget)) return
-            if (dropTarget === q.id) setDropTarget(null)
-          },
-          onDrop: async (e) => {
-            e.preventDefault()
-            setDropTarget(null)
-            const id = e.dataTransfer.getData('text/plain') || draggingId
-            if (id) {
-              await onMutate('update', { id, quadrant: q.id })
-            }
+          className: 'dsh-sched-qbox',
+          onClick: () => {
+            if (selectedItemId) handleSelectOrMove(q.id)
           },
         },
           React.createElement('div', { className: 'dsh-sched-qhead' },
@@ -674,28 +664,32 @@ function apply(ctx) {
               q.dot + ' ' + q.title,
               React.createElement('span', { className: 'dsh-sched-qsubtitle' }, q.subtitle),
             ),
-            React.createElement('span', { className: 'dsh-sched-qcnt' }, String(items.length)),
+            React.createElement('div', { style: { display: 'flex', alignItems: 'center', gap: 4 } },
+              selectedItemId ? React.createElement('button', {
+                className: 'dsh-sched-tl-free-btn',
+                style: { padding: '1px 5px', background: 'rgba(9,105,218,.12)', borderRadius: 4 },
+                onClick: (e) => {
+                  e.stopPropagation()
+                  handleSelectOrMove(q.id)
+                },
+              }, '移至此象限') : null,
+              React.createElement('span', { className: 'dsh-sched-qcnt' }, String(items.length)),
+            ),
           ),
           React.createElement('div', { className: 'dsh-sched-qlist' },
             items.length === 0
-              ? React.createElement('div', { className: 'dsh-sched-qempty' }, '拖拽任务到此象限')
+              ? React.createElement('div', { className: 'dsh-sched-qempty' }, '暂无该象限任务')
               : items.map((r) => {
-                  const isDragging = draggingId === r.item.id
+                  const isSelected = selectedItemId === r.item.id
                   return React.createElement('div', {
                     key: r.item.id,
-                    className: 'dsh-sched-qcard' + (r.done ? ' done' : '') + (isDragging ? ' dragging' : ''),
-                    draggable: true,
-                    onDragStart: (e) => {
-                      setDraggingId(r.item.id)
-                      e.dataTransfer.setData('text/plain', r.item.id)
-                      e.dataTransfer.effectAllowed = 'move'
-                    },
-                    onDragEnd: () => {
-                      setDraggingId(null)
-                      setDropTarget(null)
+                    className: 'dsh-sched-qcard' + (r.done ? ' done' : '') + (isSelected ? ' selected' : ''),
+                    style: isSelected ? { borderColor: '#0969da', background: 'rgba(9,105,218,.12)', outline: '2px solid rgba(9,105,218,.4)' } : {},
+                    onClick: (e) => {
+                      e.stopPropagation()
+                      setSelectedItemId(isSelected ? null : r.item.id)
                     },
                   },
-                    React.createElement('span', { className: 'qhandle', title: '按住拖动' }, '⋮⋮'),
                     React.createElement('button', {
                       className: 'dsh-sched-circle' + (r.done ? ' done' : ''),
                       title: r.done ? '标记未完成' : '标记已完成',
@@ -707,9 +701,28 @@ function apply(ctx) {
                     React.createElement('span', {
                       className: 'qtitle',
                       title: r.item.title + (r.item.note ? ' · ' + r.item.note : ''),
-                      onClick: () => onOpenDetail(r.item.id),
+                      onClick: (e) => {
+                        e.stopPropagation()
+                        onOpenDetail(r.item.id)
+                      },
                     }, r.item.title),
                     r.item.time ? React.createElement('span', { className: 'qtime' }, r.item.time) : null,
+                    React.createElement('select', {
+                      className: 'dsh-sched-input',
+                      style: { flex: 'none', width: 28, height: 20, padding: 0, fontSize: 10, cursor: 'pointer', textAlign: 'center' },
+                      value: q.id,
+                      title: '切换象限',
+                      onClick: (e) => e.stopPropagation(),
+                      onChange: async (e) => {
+                        e.stopPropagation()
+                        await onMutate('update', { id: r.item.id, quadrant: e.target.value })
+                      },
+                    },
+                      React.createElement('option', { value: 'q1' }, '🔴 Q1'),
+                      React.createElement('option', { value: 'q2' }, '🟡 Q2'),
+                      React.createElement('option', { value: 'q3' }, '🔵 Q3'),
+                      React.createElement('option', { value: 'q4' }, '🟢 Q4'),
+                    ),
                   )
                 }),
           ),
@@ -722,9 +735,8 @@ function apply(ctx) {
   function TimelineView(props) {
     const { data, today, currentSessionId, sessionsState, onMutate, onOpenDetail, onOpenEdit, onScheduleTime, timerSvc } = props
     const [unscheduledOpen, setUnscheduledOpen] = React.useState(false)
+    const [selectedUnscheduledId, setSelectedUnscheduledId] = React.useState(null)
     const [nowMinutes, setNowMinutes] = React.useState(() => getCurrentMinutes())
-    const [draggingId, setDraggingId] = React.useState(null)
-    const [dropTargetFree, setDropTargetFree] = React.useState(null)
 
     // 动态流动游标: 每 60 秒自动刷新
     React.useEffect(() => {
@@ -753,6 +765,12 @@ function apply(ctx) {
       q4: { title: '不重要不紧急', dot: '🟢', color: '#1a7f37' },
     }
 
+    const handleAssignToFree = async (startTime) => {
+      if (!selectedUnscheduledId) return
+      await onMutate('update', { id: selectedUnscheduledId, startTime: startTime, time: startTime })
+      setSelectedUnscheduledId(null)
+    }
+
     return React.createElement('div', { className: 'dsh-sched-timeline' },
       React.createElement('div', { className: 'dsh-sched-tl-statbar' },
         React.createElement('span', { className: 'dsh-sched-tl-pill' }, '⏱️ 专注 ' + stats.totalBusyText),
@@ -761,6 +779,16 @@ function apply(ctx) {
           ? React.createElement('span', { className: 'dsh-sched-tl-pill warn' }, '⚠️ ' + stats.conflictCount + ' 处时段冲突')
           : React.createElement('span', { className: 'dsh-sched-tl-pill' }, '✅ 无冲突撞车'),
       ),
+      selectedUnscheduledId ? React.createElement('div', {
+        className: 'dsh-sched-tl-statbar',
+        style: { background: 'rgba(9,105,218,.1)', borderColor: 'rgba(9,105,218,.3)', color: '#0969da' },
+      },
+        React.createElement('span', null, '👉 已选中待办，点击下方任意「☕ 空闲」卡片即可一键填入该时段排程'),
+        React.createElement('button', {
+          className: 'dsh-sched-tl-free-btn',
+          onClick: () => setSelectedUnscheduledId(null),
+        }, '取消选择'),
+      ) : null,
       React.createElement('div', { className: 'dsh-sched-tl-axis' },
         nodes.length === 0
           ? React.createElement('div', { className: 'dsh-sched-empty' }, '今日暂无带具体时间的日程')
@@ -774,33 +802,27 @@ function apply(ctx) {
                 )
               }
               if (n.type === 'free') {
-                const isOver = dropTargetFree === idx
+                const canAssign = !!selectedUnscheduledId
                 return React.createElement('div', { key: 'free_' + idx, className: 'dsh-sched-tl-node' },
-                  React.createElement('div', { className: 'dsh-sched-tl-dot free' + (isOver ? ' dragover' : '') }),
+                  React.createElement('div', { className: 'dsh-sched-tl-dot free' }),
                   React.createElement('div', {
-                    className: 'dsh-sched-tl-free-box' + (isOver ? ' dragover' : ''),
-                    onDragOver: (e) => {
-                      e.preventDefault()
-                      e.dataTransfer.dropEffect = 'move'
-                      if (dropTargetFree !== idx) setDropTargetFree(idx)
-                    },
-                    onDragLeave: (e) => {
-                      if (e.currentTarget.contains(e.relatedTarget)) return
-                      if (dropTargetFree === idx) setDropTargetFree(null)
-                    },
-                    onDrop: async (e) => {
-                      e.preventDefault()
-                      setDropTargetFree(null)
-                      const id = e.dataTransfer.getData('text/plain') || draggingId
-                      if (id) {
-                        await onMutate('update', { id, startTime: n.startTime, time: n.startTime })
-                      }
+                    className: 'dsh-sched-tl-free-box',
+                    style: canAssign ? { borderColor: '#0969da', background: 'rgba(9,105,218,.08)', cursor: 'pointer' } : {},
+                    onClick: () => {
+                      if (canAssign) handleAssignToFree(n.startTime)
                     },
                   },
-                    React.createElement('span', null, isOver ? '✨ 松手排程至 ' + n.startTime : ('☕ 空闲 ' + n.startTime + ' - ' + n.endTime + ' (' + n.durationText + ')')),
-                    onScheduleTime ? React.createElement('button', {
+                    React.createElement('span', null,
+                      canAssign
+                        ? '👉 点击将选中待办排入 ' + n.startTime + ' (' + n.durationText + ')'
+                        : '☕ 空闲 ' + n.startTime + ' - ' + n.endTime + ' (' + n.durationText + ')',
+                    ),
+                    onScheduleTime && !canAssign ? React.createElement('button', {
                       className: 'dsh-sched-tl-free-btn',
-                      onClick: () => onScheduleTime(n.startTime, n.endTime),
+                      onClick: (e) => {
+                        e.stopPropagation()
+                        onScheduleTime(n.startTime, n.endTime)
+                      },
                     }, '+ 排程') : null,
                   ),
                 )
@@ -874,22 +896,24 @@ function apply(ctx) {
         ),
         unscheduledOpen ? React.createElement('div', { className: 'dsh-sched-tl-un-list' },
           unscheduled.map((u) => {
-            const isDragging = draggingId === u.item.id
+            const isSelected = selectedUnscheduledId === u.item.id
             return React.createElement('div', {
               key: u.item.id,
-              className: 'dsh-sched-tl-dragcard' + (isDragging ? ' dragging' : '') + (u.done ? ' done' : ''),
-              draggable: true,
-              onDragStart: (e) => {
-                setDraggingId(u.item.id)
-                e.dataTransfer.setData('text/plain', u.item.id)
-                e.dataTransfer.effectAllowed = 'move'
-              },
-              onDragEnd: () => {
-                setDraggingId(null)
-                setDropTargetFree(null)
+              className: 'dsh-sched-tl-dragcard' + (isSelected ? ' selected' : '') + (u.done ? ' done' : ''),
+              style: isSelected ? { borderColor: '#0969da', background: 'rgba(9,105,218,.12)', outline: '2px solid rgba(9,105,218,.4)' } : {},
+              onClick: () => {
+                setSelectedUnscheduledId(isSelected ? null : u.item.id)
               },
             },
-              React.createElement('span', { className: 'qhandle', title: '按住拖动安排时段' }, '⋮⋮'),
+              React.createElement('button', {
+                className: 'dsh-sched-tl-free-btn',
+                style: { padding: '1px 6px', background: isSelected ? '#0969da' : 'rgba(127,127,127,.15)', color: isSelected ? '#fff' : 'inherit' },
+                onClick: (e) => {
+                  e.stopPropagation()
+                  setSelectedUnscheduledId(isSelected ? null : u.item.id)
+                },
+                title: isSelected ? '取消选中' : '选中此任务以安排到时间轴',
+              }, isSelected ? '已选' : '排期'),
               React.createElement(ScheduleRow, {
                 item: u.item,
                 dateStr: today,

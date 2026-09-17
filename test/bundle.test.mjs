@@ -26,10 +26,10 @@ test('built client bundle registers the documented plugin contract', async () =>
 
 test('built client bundle contains drag-schedule classes and drop target styles', () => {
   const clientCode = readFileSync(new URL('lib/client.js', root), 'utf8')
-  assert.ok(clientCode.includes('.dsh-sched-tl-free-box.dragover'), 'CSS 应包含 free-box.dragover 样式')
+  assert.ok(clientCode.includes('.dsh-sched-tl-free-box'), 'CSS 应包含 free-box 样式')
   assert.ok(clientCode.includes('.dsh-sched-tl-dragcard'), 'CSS 应包含 dragcard 样式')
   assert.ok(clientCode.includes('dsh-sched-tl-dragcard'), 'DOM 应渲染 dragcard 结构')
-  assert.ok(clientCode.includes('dataTransfer.effectAllowed = \'move\''), '应设置拖拽 move 效果')
+  assert.ok(clientCode.includes('selectedUnscheduledId') || clientCode.includes('handleAssignToFree'), '应支持选中待办一键排程到空闲段')
 })
 
 test('built client bundle contains quick-adjust delay buttons and logic', () => {
