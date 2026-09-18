@@ -21,21 +21,29 @@ const React = require('react')
 // 注:CSS 全部展开为单行字符串(构建脚本只做文本内联,不做 CSS 压缩)。
 const CSS = '.dsh-sched-linkbtn{display:inline-flex;align-items:center;justify-content:center;background:transparent;border:1px solid transparent;border-radius:8px;padding:3px 6px;font-size:14px;cursor:pointer;color:inherit;}.dsh-sched-linkbtn:hover,.dsh-sched-linkbtn.active{background:rgba(127,127,127,.14);}.dsh-sched-overlay-wrap{position:fixed;top:0;left:0;right:0;bottom:0;pointer-events:none;z-index:1000;font-family:inherit;}.dsh-sched-header{display:flex;align-items:center;gap:8px;padding:10px 12px;border-bottom:1px solid rgba(127,127,127,.2);font-weight:600;font-size:14px;}.dsh-sched-tabs{display:flex;gap:4px;margin-left:auto;}.dsh-sched-tab{border:1px solid rgba(127,127,127,.3);background:transparent;border-radius:8px;padding:3px 10px;font-size:12px;cursor:pointer;color:inherit;}.dsh-sched-tab.active{background:rgba(9,105,218,.12);border-color:rgba(9,105,218,.5);color:#0969da;}.dsh-sched-add{padding:10px 12px;border-bottom:1px solid rgba(127,127,127,.2);display:flex;flex-direction:column;gap:6px;}.dsh-sched-add-row{display:flex;gap:6px;align-items:center;}.dsh-sched-input{flex:1;min-width:0;background:rgba(127,127,127,.08);border:1px solid rgba(127,127,127,.3);border-radius:8px;padding:5px 9px;font-size:13px;color:inherit;}.dsh-sched-input:focus{outline:none;border-color:rgba(9,105,218,.6);}.dsh-sched-addbtn{background:#0969da;color:#fff;border:none;border-radius:8px;padding:5px 12px;font-size:13px;cursor:pointer;white-space:nowrap;}.dsh-sched-addbtn:hover{background:#0a5bb8;}.dsh-sched-add-opts{display:flex;gap:6px;flex-wrap:wrap;align-items:center;}.dsh-sched-weekdays{display:flex;gap:3px;}.dsh-sched-wd{border:1px solid rgba(127,127,127,.35);background:transparent;border-radius:50%;width:24px;height:24px;font-size:11px;cursor:pointer;color:inherit;display:flex;align-items:center;justify-content:center;padding:0;}.dsh-sched-wd.on{background:rgba(9,105,218,.18);border-color:#0969da;color:#0969da;}.dsh-sched-body{flex:1;overflow-y:auto;padding:8px 10px;}.dsh-sched-day{padding:6px 0;}.dsh-sched-dayhead{font-size:12px;font-weight:600;color:rgba(127,127,127,.9);margin:4px 2px 6px;display:flex;align-items:center;gap:6px;}.dsh-sched-dayhead.today{color:#0969da;}.dsh-sched-dayhead .cnt{font-weight:400;color:rgba(127,127,127,.7);}.dsh-sched-row{display:flex;align-items:center;gap:8px;padding:6px 8px;border-radius:8px;}.dsh-sched-row:hover{background:rgba(127,127,127,.1);}.dsh-sched-circle{width:18px;height:18px;border-radius:50%;border:2px solid rgba(127,127,127,.7);background:transparent;cursor:pointer;flex:none;display:flex;align-items:center;justify-content:center;font-size:10px;color:#fff;padding:0;}.dsh-sched-circle.done{background:#2da44e;border-color:#2da44e;}.dsh-sched-main{flex:1;min-width:0;display:flex;flex-direction:column;gap:1px;}.dsh-sched-title{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;cursor:default;}.dsh-sched-title.linked{cursor:pointer;color:#0969da;}.dsh-sched-title.done{text-decoration:line-through;opacity:.5;}.dsh-sched-meta{display:flex;gap:5px;align-items:center;font-size:11px;color:rgba(127,127,127,.85);flex-wrap:wrap;}.dsh-sched-pill{background:rgba(127,127,127,.14);border-radius:5px;padding:0 5px;font-size:10px;line-height:16px;}.dsh-sched-note{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:260px;}.dsh-sched-chips{display:flex;gap:4px;flex-wrap:wrap;align-items:center;}.dsh-sched-chip{display:inline-flex;align-items:center;gap:2px;max-width:130px;background:rgba(9,105,218,.1);color:#0969da;border:1px solid rgba(9,105,218,.3);border-radius:10px;padding:1px 7px;font-size:11px;cursor:pointer;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}.dsh-sched-link{flex:none;width:20px;height:20px;border-radius:50%;border:1px dashed rgba(127,127,127,.6);background:transparent;font-size:11px;cursor:pointer;color:rgba(127,127,127,.8);display:flex;align-items:center;justify-content:center;padding:0;}.dsh-sched-link:hover{border-color:#0969da;color:#0969da;}.dsh-sched-link.on{border-color:rgba(127,127,127,.5);background:rgba(127,127,127,.12);color:rgba(127,127,127,.8);}.dsh-sched-del{flex:none;border:none;background:transparent;color:rgba(127,127,127,.65);font-size:13px;cursor:pointer;border-radius:6px;padding:0 4px;}.dsh-sched-del:hover{color:#d1242f;background:rgba(209,36,47,.1);}.dsh-sched-del.confirm{color:#fff;background:#d1242f;font-size:11px;border-radius:8px;padding:2px 6px;}.dsh-sched-donesum{padding:5px 8px;font-size:12px;color:rgba(127,127,127,.85);cursor:pointer;display:flex;align-items:center;gap:5px;border-radius:8px;}.dsh-sched-donesum:hover{background:rgba(127,127,127,.1);}.dsh-sched-empty{padding:18px 8px;text-align:center;color:rgba(127,127,127,.7);font-size:12px;}.dsh-sched-footer{padding:6px 12px;border-top:1px solid rgba(127,127,127,.2);font-size:11px;color:rgba(127,127,127,.75);display:flex;justify-content:space-between;gap:8px;}.dsh-sched-linker{position:fixed;bottom:86px;right:16px;width:300px;max-width:calc(100vw - 32px);background:#ffffff;color:#1f2328;border:1px solid rgba(127,127,127,.3);border-radius:12px;box-shadow:0 8px 32px rgba(0,0,0,.22);pointer-events:auto;font-size:13px;overflow:hidden;z-index:1001;}.dsh-sched-linker-head{padding:9px 12px;font-weight:600;font-size:13px;border-bottom:1px solid rgba(127,127,127,.2);display:flex;align-items:center;justify-content:space-between;}.dsh-sched-linker-list{max-height:280px;overflow-y:auto;padding:6px;}.dsh-sched-linker-item{display:flex;align-items:center;gap:6px;padding:6px 8px;border-radius:8px;cursor:pointer;}.dsh-sched-linker-item:hover{background:rgba(127,127,127,.1);}.dsh-sched-linker-item .tag{margin-left:auto;font-size:10px;color:rgba(127,127,127,.7);flex:none;}.dsh-sched-linker-item.linked .tag{color:#2da44e;}.dsh-sched-linker-cancel{padding:7px;border-top:1px solid rgba(127,127,127,.2);text-align:center;}.dsh-sched-linker-cancel button{border:none;background:transparent;color:rgba(127,127,127,.8);cursor:pointer;font-size:12px;padding:2px 12px;border-radius:8px;}.dsh-sched-linker-cancel button:hover{background:rgba(127,127,127,.1);}.dsh-sched-cal{display:grid;grid-template-columns:repeat(7,1fr);gap:2px;margin:2px 0 6px;}.dsh-sched-calhead{text-align:center;font-size:10px;color:rgba(127,127,127,.7);padding:2px 0;}.dsh-sched-cald{border:1px solid rgba(127,127,127,.14);border-radius:6px;min-height:40px;padding:2px;cursor:pointer;text-align:center;font-size:11px;display:flex;flex-direction:column;align-items:center;gap:1px;background:transparent;color:inherit;}.dsh-sched-cald:hover{border-color:rgba(127,127,127,.45);}.dsh-sched-cald.empty{visibility:hidden;}.dsh-sched-cald.today{border-color:#0969da;}.dsh-sched-cald.sel{background:rgba(9,105,218,.16);border-color:#0969da;}.dsh-sched-cald .d{font-size:11px;line-height:1.3;}.dsh-sched-cald .s{font-size:9px;color:rgba(127,127,127,.8);line-height:1.2;}.dsh-sched-cald .s.doneall{color:#2da44e;font-weight:600;}.dsh-sched-calnav{display:flex;align-items:center;justify-content:space-between;margin:2px 2px 6px;}.dsh-sched-calnav button{border:1px solid rgba(127,127,127,.3);background:transparent;border-radius:6px;padding:2px 9px;font-size:12px;cursor:pointer;color:inherit;}.dsh-sched-calnav button:hover{background:rgba(127,127,127,.12);}.dsh-sched-calnav .t{font-weight:600;font-size:13px;}.dsh-sched-stats{display:grid;grid-template-columns:repeat(4,1fr);gap:4px;margin-bottom:8px;}.dsh-sched-stat{background:rgba(127,127,127,.07);border:1px solid rgba(127,127,127,.15);border-radius:8px;padding:5px 4px;text-align:center;}.dsh-sched-stat .v{font-size:15px;font-weight:700;line-height:1.3;}.dsh-sched-stat .k{font-size:10px;color:rgba(127,127,127,.75);margin-top:1px;}.dsh-sched-histhead{font-size:12px;font-weight:600;color:rgba(127,127,127,.9);margin:4px 2px 6px;}.dsh-sched-backbtn{border:none;background:transparent;border-radius:8px;padding:2px 8px;font-size:15px;line-height:1;cursor:pointer;color:inherit;}.dsh-sched-backbtn:hover{background:rgba(127,127,127,.15);}.dsh-sched-addtoggle{border:1px solid rgba(9,105,218,.5);background:rgba(9,105,218,.08);color:#0969da;border-radius:8px;padding:3px 10px;font-size:12px;line-height:1.4;cursor:pointer;white-space:nowrap;}.dsh-sched-addtoggle:hover{background:rgba(9,105,218,.16);}.dsh-sched-addtoggle.active{background:#0969da;border-color:#0969da;color:#fff;}.dsh-sched-textarea{width:100%;min-height:56px;resize:vertical;background:rgba(127,127,127,.08);border:1px solid rgba(127,127,127,.3);border-radius:8px;padding:6px 9px;font-size:13px;color:inherit;font-family:inherit;box-sizing:border-box;}.dsh-sched-textarea:focus{outline:none;border-color:rgba(9,105,218,.6);}.dsh-sched-editbtn{flex:none;border:none;background:transparent;color:rgba(127,127,127,.75);font-size:13px;cursor:pointer;border-radius:6px;padding:0 4px;}.dsh-sched-editbtn:hover{color:#0969da;background:rgba(9,105,218,.08);}.dsh-sched-detail{padding:12px 14px 14px;display:flex;flex-direction:column;gap:10px;}.dsh-sched-detail-title{font-size:16px;font-weight:600;line-height:1.5;word-break:break-word;}.dsh-sched-detail-pills{display:flex;gap:5px;flex-wrap:wrap;align-items:center;}.dsh-sched-section{border-top:1px solid rgba(127,127,127,.16);padding-top:8px;display:flex;flex-direction:column;gap:6px;}.dsh-sched-section-label{font-size:11px;font-weight:600;color:rgba(127,127,127,.85);}.dsh-sched-note-full{white-space:pre-wrap;word-break:break-word;line-height:1.6;font-size:13px;background:rgba(127,127,127,.07);border-radius:8px;padding:8px 10px;}.dsh-sched-note-empty{font-size:12px;color:rgba(127,127,127,.7);}.dsh-sched-actions{margin-top:auto;display:flex;gap:6px;flex-wrap:wrap;padding-top:10px;border-top:1px solid rgba(127,127,127,.16);}.dsh-sched-abtn{display:inline-flex;align-items:center;gap:4px;border:1px solid rgba(127,127,127,.35);background:transparent;border-radius:8px;padding:5px 12px;font-size:12px;line-height:1.4;cursor:pointer;color:inherit;}.dsh-sched-abtn:hover{background:rgba(127,127,127,.1);}.dsh-sched-abtn.primary{background:#0969da;border-color:#0969da;color:#fff;}.dsh-sched-abtn.primary:hover{background:#0a5bb8;}.dsh-sched-abtn.danger{color:#d1242f;border-color:rgba(209,36,47,.5);}.dsh-sched-abtn.danger:hover{background:rgba(209,36,47,.08);}.dsh-sched-abtn.danger.confirm{background:#d1242f;border-color:#d1242f;color:#fff;}.dsh-sched-chip.static{cursor:default;}@media (prefers-color-scheme: dark){.dsh-sched-linker{background:#1b1e23;color:#e6e8eb;border-color:rgba(255,255,255,.16);}.dsh-sched-tab.active{background:rgba(86,155,235,.18);border-color:rgba(86,155,235,.55);color:#6cb0f5;}.dsh-sched-addbtn{background:#2f7be0;}.dsh-sched-title.linked,.dsh-sched-chip,.dsh-sched-dayhead.today{color:#6cb0f5;}.dsh-sched-chip{background:rgba(86,155,235,.14);border-color:rgba(86,155,235,.4);}.dsh-sched-wd.on{background:rgba(86,155,235,.2);border-color:#6cb0f5;color:#6cb0f5;}.dsh-sched-input:focus{border-color:rgba(86,155,235,.6);}.dsh-sched-cald.today,.dsh-sched-cald.sel{border-color:#6cb0f5;}.dsh-sched-cald.sel{background:rgba(86,155,235,.2);}.dsh-sched-calnav button{border-color:rgba(255,255,255,.25);}.dsh-sched-addtoggle{color:#6cb0f5;border-color:rgba(86,155,235,.55);background:rgba(86,155,235,.14);}.dsh-sched-addtoggle.active{background:#2f7be0;border-color:#2f7be0;color:#fff;}.dsh-sched-section,.dsh-sched-actions{border-top-color:rgba(255,255,255,.12);}.dsh-sched-note-full{background:rgba(255,255,255,.06);}.dsh-sched-abtn{border-color:rgba(255,255,255,.28);}.dsh-sched-abtn.primary{background:#2f7be0;border-color:#2f7be0;}.dsh-sched-editbtn:hover{color:#6cb0f5;background:rgba(86,155,235,.12);}.dsh-sched-textarea:focus{border-color:rgba(86,155,235,.6);}}.dsh-sched-tabwrap { display: flex; flex-direction: column; flex: auto; height: 100%; min-height: 0; background: transparent; color: inherit; box-sizing: border-box; overflow: hidden; }.dsh-sched-header { display: flex; align-items: center; justify-content: space-between; padding: 10px 14px; border-bottom: 1px solid var(--dsw-alias-border-l2, rgba(127,127,127,.2)); flex: none; gap: 8px; }.dsh-sched-tabs { display: flex; gap: 4px; }.dsh-sched-tab { border: 1px solid rgba(127,127,127,.3); background: transparent; border-radius: 6px; padding: 3px 9px; font-size: 12px; cursor: pointer; color: inherit; }.dsh-sched-tab.active { background: rgba(9,105,218,.15); border-color: #0969da; color: #0969da; font-weight: 600; }.dsh-sched-addtoggle { border: 1px solid rgba(9,105,218,.5); background: rgba(9,105,218,.08); color: #0969da; border-radius: 6px; padding: 3px 9px; font-size: 12px; cursor: pointer; white-space: nowrap; }.dsh-sched-addtoggle.active { background: #0969da; color: #fff; }.dsh-sched-body { flex: auto; min-height: 0; overflow-y: auto !important; overflow-x: hidden; padding: 12px 14px; scrollbar-gutter: stable; overscroll-behavior: contain; -webkit-overflow-scrolling: touch; }.dsh-sched-body::-webkit-scrollbar { width: 6px; }.dsh-sched-body::-webkit-scrollbar-thumb { background: rgba(127,127,127,.3); border-radius: 3px; }.dsh-sched-body::-webkit-scrollbar-thumb:hover { background: rgba(127,127,127,.5); }.dsh-sched-footer { padding: 8px 14px; border-top: 1px solid var(--dsw-alias-border-l2, rgba(127,127,127,.18)); font-size: 11px; color: rgba(127,127,127,.75); display: flex; justify-content: space-between; flex: none; }.dsh-sched-header-btn { display: inline-flex; align-items: center; justify-content: center; width: 28px; height: 28px; padding: 0; background: none; border: none; border-radius: 6px; color: var(--dsw-alias-label-secondary, inherit); cursor: pointer; font-size: 14px; }.dsh-sched-header-btn:hover { background: var(--dsw-alias-interactive-bg-hover, rgba(127,127,127,.12)); color: var(--dsw-alias-label-primary, inherit); }/* 四象限网格 */.dsh-sched-matrix { display: grid; grid-template-columns: 1fr 1fr; grid-template-rows: 1fr 1fr; gap: 8px; height: 100%; min-height: 480px; box-sizing: border-box; }.dsh-sched-qbox { display: flex; flex-direction: column; border-radius: 8px; border: 1px dashed rgba(127,127,127,.3); background: rgba(127,127,127,.04); padding: 8px; min-height: 0; overflow: hidden; transition: border-color .15s, background .15s; }.dsh-sched-qbox.dragover { border-color: #0969da !important; border-style: solid !important; background: rgba(9,105,218,.12) !important; }.dsh-sched-qhead { display: flex; align-items: center; justify-content: space-between; padding-bottom: 4px; margin-bottom: 6px; border-bottom: 1px solid rgba(127,127,127,.15); flex: none; }.dsh-sched-qtitle { font-size: 11px; font-weight: 700; display: flex; align-items: center; gap: 4px; }.dsh-sched-qsubtitle { font-size: 9px; color: rgba(127,127,127,.7); margin-left: 3px; font-weight: 400; }.dsh-sched-qcnt { font-size: 10px; padding: 1px 5px; border-radius: 10px; background: rgba(127,127,127,.15); font-weight: 600; }.dsh-sched-qlist { display: flex; flex-direction: column; gap: 5px; flex: 1; overflow-y: auto; padding-right: 2px; min-height: 0; }.dsh-sched-qcard { display: flex; align-items: center; gap: 5px; padding: 6px 7px; background: rgba(127,127,127,.08); border: 1px solid rgba(127,127,127,.18); border-radius: 6px; cursor: grab; user-select: none; font-size: 11px; transition: box-shadow .15s, transform .1s; }.dsh-sched-qcard:hover { border-color: rgba(127,127,127,.45); background: rgba(127,127,127,.12); box-shadow: 0 2px 5px rgba(0,0,0,.08); }.dsh-sched-qcard:active { cursor: grabbing; }.dsh-sched-qcard.dragging { opacity: .35; transform: scale(0.98); }.dsh-sched-qcard.done { opacity: .5; text-decoration: line-through; }.dsh-sched-qcard .qhandle { color: rgba(127,127,127,.45); font-size: 12px; cursor: grab; flex: none; }.dsh-sched-qcard .qtitle { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; cursor: pointer; }.dsh-sched-qcard .qtime { font-size: 9px; padding: 1px 4px; border-radius: 3px; background: rgba(127,127,127,.15); flex: none; }.dsh-sched-qempty { flex: 1; display: flex; align-items: center; justify-content: center; font-size: 10px; color: rgba(127,127,127,.45); border: 1px dashed rgba(127,127,127,.18); border-radius: 5px; min-height: 40px; }/* 垂直时间轴排程样式 */.dsh-sched-timeline { display: flex; flex-direction: column; gap: 14px; min-height: 100%; height: auto; box-sizing: border-box; padding-bottom: 24px; }.dsh-sched-tl-statbar { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; padding: 6px 10px; background: rgba(127,127,127,.08); border: 1px solid rgba(127,127,127,.18); border-radius: 8px; font-size: 11px; flex: none; }.dsh-sched-tl-pill { display: inline-flex; align-items: center; gap: 4px; padding: 2px 8px; border-radius: 12px; background: rgba(127,127,127,.12); font-weight: 500; }.dsh-sched-tl-pill.warn { background: rgba(207,34,46,.15); color: #cf222e; font-weight: 600; }.dsh-sched-tl-axis { position: relative; display: flex; flex-direction: column; gap: 12px; padding-left: 18px; border-left: 2px solid rgba(127,127,127,.25); margin-left: 12px; margin-top: 6px; flex: none; }.dsh-sched-tl-node { position: relative; flex: none; width: 100%; box-sizing: border-box; }.dsh-sched-tl-dot { position: absolute; left: -24px; top: 12px; width: 10px; height: 10px; border-radius: 50%; background: #0969da; border: 2px solid var(--dsw-alias-bg-canvas, #1f2328); box-sizing: border-box; z-index: 2; }.dsh-sched-tl-dot.conflict { background: #cf222e; }.dsh-sched-tl-dot.free { background: rgba(127,127,127,.4); width: 8px; height: 8px; left: -23px; }.dsh-sched-tl-card { display: flex; flex-direction: column; gap: 6px; padding: 10px 12px; background: rgba(127,127,127,.08); border: 1px solid rgba(127,127,127,.2); border-radius: 8px; font-size: 12px; box-sizing: border-box; word-break: break-word; transition: all .15s; }.dsh-sched-tl-card:hover { border-color: rgba(127,127,127,.45); background: rgba(127,127,127,.12); box-shadow: 0 2px 8px rgba(0,0,0,.1); }.dsh-sched-tl-card.conflict { border-color: #cf222e; background: rgba(207,34,46,.08); }.dsh-sched-tl-card.done { opacity: .55; text-decoration: line-through; }.dsh-sched-tl-topline { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 6px; }.dsh-sched-tl-time { font-family: monospace; font-weight: 700; font-size: 12px; color: #0969da; display: inline-flex; align-items: center; gap: 6px; }.dsh-sched-tl-dur { font-size: 10px; color: rgba(127,127,127,.75); font-weight: normal; }.dsh-sched-tl-warn { font-size: 10px; color: #cf222e; background: rgba(207,34,46,.12); padding: 4px 8px; border-radius: 4px; margin-top: 4px; font-weight: 600; display: flex; align-items: center; gap: 4px; word-break: break-word; }.dsh-sched-tl-free-box { display: flex; align-items: center; justify-content: space-between; padding: 4px 8px; border: 1px dashed rgba(127,127,127,.3); border-radius: 6px; font-size: 11px; color: rgba(127,127,127,.75); background: rgba(127,127,127,.02); transition: all .15s; }.dsh-sched-tl-free-box.dragover { border-color: #0969da; border-style: solid; background: rgba(9,105,218,.14); box-shadow: 0 0 10px rgba(9,105,218,.25); color: #0969da; font-weight: 600; }.dsh-sched-tl-dot.free.dragover { background: #0969da; transform: scale(1.3); }.dsh-sched-tl-free-btn { border: none; background: transparent; color: #0969da; cursor: pointer; font-size: 10px; padding: 1px 6px; border-radius: 4px; flex: none; }.dsh-sched-tl-free-btn:hover { background: rgba(9,105,218,.12); text-decoration: underline; }.dsh-sched-tl-unscheduled { margin-top: 20px; padding: 10px 12px; background: rgba(127,127,127,.04); border: 1px solid rgba(127,127,127,.18); border-radius: 8px; flex: none; clear: both; }.dsh-sched-tl-un-header { font-size: 12px; font-weight: 600; color: inherit; display: flex; align-items: center; justify-content: space-between; cursor: pointer; user-select: none; margin-bottom: 6px; }.dsh-sched-tl-un-list { display: flex; flex-direction: column; gap: 4px; margin-top: 6px; }.dsh-sched-tl-now-wrap { display: flex; align-items: center; position: relative; margin: 4px 0; z-index: 3; }.dsh-sched-tl-now-dot { position: absolute; left: -25px; top: 50%; transform: translateY(-50%); width: 12px; height: 12px; border-radius: 50%; background: #cf222e; border: 2px solid var(--dsw-alias-bg-canvas, #1f2328); box-sizing: border-box; z-index: 4; box-shadow: 0 0 0 0 rgba(207,34,46,.7); animation: dsh-sched-pulse 2s infinite cubic-bezier(.45, 0, .55, 1); }@keyframes dsh-sched-pulse { 0% { box-shadow: 0 0 0 0 rgba(207,34,46,.7); } 70% { box-shadow: 0 0 0 6px rgba(207,34,46,0); } 100% { box-shadow: 0 0 0 0 rgba(207,34,46,0); } }.dsh-sched-tl-now-line { display: flex; align-items: center; position: relative; width: 100%; height: 2px; background: linear-gradient(90deg, #cf222e 0%, rgba(207,34,46,.4) 75%, transparent 100%); margin-left: -18px; padding-left: 24px; }.dsh-sched-tl-now-label { display: inline-flex; align-items: center; gap: 4px; background: #cf222e; color: #fff; font-size: 10px; font-weight: 700; font-family: monospace; padding: 1px 7px; border-radius: 10px; box-shadow: 0 1px 4px rgba(207,34,46,.35); white-space: nowrap; letter-spacing: .3px; user-select: none; }.dsh-sched-tl-dot.overdue:not(.conflict) { background: #d97706; }.dsh-sched-tl-card.overdue { border-color: rgba(217,119,6,.45); background: rgba(217,119,6,.06); }.dsh-sched-tl-overdue { font-size: 11px; color: #d97706; background: rgba(217,119,6,.12); padding: 3px 8px; border-radius: 4px; font-weight: 600; display: inline-flex; align-items: center; gap: 4px; align-self: flex-start; margin-top: 2px; }.dsh-sched-tl-dragcard { display: flex; align-items: center; gap: 4px; background: rgba(127,127,127,.06); border: 1px solid rgba(127,127,127,.18); border-radius: 8px; padding: 1px 6px; cursor: grab; user-select: none; transition: all .15s; }.dsh-sched-tl-dragcard:hover { background: rgba(127,127,127,.12); border-color: rgba(127,127,127,.4); box-shadow: 0 2px 6px rgba(0,0,0,.08); }.dsh-sched-tl-dragcard:active { cursor: grabbing; }.dsh-sched-tl-dragcard.dragging { opacity: .35; transform: scale(0.98); }.dsh-sched-tl-dragcard.done { opacity: .5; }.dsh-sched-tl-dragcard .qhandle { color: rgba(127,127,127,.45); font-size: 13px; cursor: grab; flex: none; padding: 2px; }.dsh-sched-tl-dragcard .dsh-sched-row { flex: 1; min-width: 0; padding: 4px 2px; background: transparent; }.dsh-sched-tl-dragcard .dsh-sched-row:hover { background: transparent; }.dsh-sched-tl-adjust-group { display: inline-flex; align-items: center; gap: 3px; margin-left: 4px; }.dsh-sched-tl-adjust-btn { display: inline-flex; align-items: center; justify-content: center; background: transparent; border: 1px solid rgba(127,127,127,.22); border-radius: 999px; padding: 0 5px; height: 16px; font-size: 10px; line-height: 1; cursor: pointer; color: inherit; opacity: .65; transition: all .15s; user-select: none; }.dsh-sched-tl-adjust-btn:hover { opacity: 1; background: rgba(9,105,218,.12); border-color: rgba(9,105,218,.4); color: #0969da; }'
 
-function injectStyles(css) {
-  const el = document.createElement('style')
-  el.textContent = css
-  document.head.appendChild(el)
-  return () => { el.remove() }
+const STYLE_ID = "@dsh-schedule/panel.css"
+
+function ensureStyle() {
+  const doc = globalThis.document
+  if (doc === undefined) return
+  if (doc.querySelector('style[data-plugin-css="' + STYLE_ID + '"]') !== null) return
+  const el = doc.createElement('style')
+  el.dataset.plugin = "dsh-schedule"
+  el.dataset.pluginCss = STYLE_ID
+  el.textContent = CSS
+  doc.head.appendChild(el)
 }
 
 function apply(ctx) {
+  ensureStyle()
   const slots = ctx.slots
   if (slots === undefined) return
   const sessionsSvc = ctx.sessions
-  const timerSvc = ctx.timer
+  // timer 不是 DSH 提供的服务(全环境无提供者),必须用 ctx.get 可选读取;
+  // 直接读 ctx.timer 会因未声明 inject 而抛 "cannot get property without inject"。
+  const timerSvc = ctx.get('timer')
   const sidebarRight = ctx.sidebarRight
   const sidebarRightTabs = ctx.sidebarRightTabs
-  ctx.effect(() => injectStyles(CSS))
 
   async function api(method, args) {
     const res = await fetch('/api/dailytask/' + method, {
@@ -128,12 +136,13 @@ function apply(ctx) {
 
   // ---- 行 ----
   function ScheduleRow(props) {
-    const { item, dateStr, done, currentSessionId, sessionsState, onMutate, onOpenDetail, onOpenEdit } = props
+    const { item, dateStr, done, currentSessionId, onMutate, onOpenDetail, onOpenEdit } = props
     const [confirmDel, setConfirmDel] = React.useState(false)
     React.useEffect(() => {
       if (!confirmDel) return undefined
-      if (timerSvc !== undefined) return timerSvc.timeout(() => setConfirmDel(false), 3000)
-      return undefined
+      if (timerSvc !== undefined && typeof timerSvc.timeout === 'function') return timerSvc.timeout(() => setConfirmDel(false), 3000)
+      const t = setTimeout(() => setConfirmDel(false), 3000)
+      return () => clearTimeout(t)
     }, [confirmDel])
     const links = Array.isArray(item.linkedSessions) ? item.linkedSessions : []
     const linkedHere = links.indexOf(currentSessionId) !== -1
@@ -324,12 +333,13 @@ function apply(ctx) {
 
   // ---- 详情视图 ----
   function DetailView(props) {
-    const { data, item, currentSessionId, sessionsState, onMutate, onBack, onEdit } = props
+    const { data, item, currentSessionId, onMutate, onBack, onEdit } = props
     const [confirmDel, setConfirmDel] = React.useState(false)
     React.useEffect(() => {
       if (!confirmDel) return undefined
-      if (timerSvc !== undefined) return timerSvc.timeout(() => setConfirmDel(false), 3000)
-      return undefined
+      if (timerSvc !== undefined && typeof timerSvc.timeout === 'function') return timerSvc.timeout(() => setConfirmDel(false), 3000)
+      const t = setTimeout(() => setConfirmDel(false), 3000)
+      return () => clearTimeout(t)
     }, [confirmDel])
     const today = todayStr()
     const links = Array.isArray(item.linkedSessions) ? item.linkedSessions : []
@@ -533,7 +543,7 @@ function apply(ctx) {
   }
 
   function HistoryView(props) {
-    const { data, currentSessionId, sessionsState, onMutate, onOpenDetail, onOpenEdit } = props
+    const { data, currentSessionId, onMutate, onOpenDetail, onOpenEdit } = props
     const today = todayStr()
     const [year, setYear] = React.useState(Number(today.slice(0, 4)))
     const [month, setMonth] = React.useState(Number(today.slice(5, 7)))
@@ -583,7 +593,7 @@ function apply(ctx) {
     for (let i = 0; i < selRows.length; i++) {
       selEls.push(React.createElement(ScheduleRow, {
         key: selRows[i].item.id, item: selRows[i].item, dateStr: selected, done: selRows[i].done,
-        currentSessionId: currentSessionId, sessionsState: sessionsState, onMutate: onMutate,
+        currentSessionId: currentSessionId, onMutate: onMutate,
         onOpenDetail: onOpenDetail, onOpenEdit: onOpenEdit,
       }))
     }
@@ -739,7 +749,7 @@ function apply(ctx) {
 
   // ---- 垂直时间轴 (Time-blocking) ----
   function TimelineView(props) {
-    const { data, today, currentSessionId, sessionsState, onMutate, onOpenDetail, onOpenEdit, onScheduleTime, timerSvc } = props
+    const { data, today, currentSessionId, onMutate, onOpenDetail, onOpenEdit, onScheduleTime, timerSvc } = props
     const [unscheduledOpen, setUnscheduledOpen] = React.useState(false)
     const [draggingId, setDraggingId] = React.useState(null)
     const [dropTargetFree, setDropTargetFree] = React.useState(null)
@@ -959,7 +969,6 @@ function apply(ctx) {
                 dateStr: today,
                 done: u.done,
                 currentSessionId: currentSessionId,
-                sessionsState: sessionsState,
                 onMutate: onMutate,
                 onOpenDetail: onOpenDetail,
                 onOpenEdit: onOpenEdit,
@@ -1008,7 +1017,7 @@ function apply(ctx) {
     let body = null
     if (m.type === 'detail') {
       body = React.createElement(DetailView, {
-        data: data, item: itemOf(m.id), currentSessionId: currentSessionId, sessionsState: sessionsState,
+        data: data, item: itemOf(m.id), currentSessionId: currentSessionId,
         onMutate: onMutate, onBack: backToList, onEdit: () => setMode({ type: 'edit', id: m.id }),
       })
     } else if (m.type === 'edit') {
@@ -1024,7 +1033,7 @@ function apply(ctx) {
       for (let i = 0; i < todo.length; i++) {
         rowEls.push(React.createElement(ScheduleRow, {
           key: todo[i].item.id, item: todo[i].item, dateStr: today, done: false,
-          currentSessionId: currentSessionId, sessionsState: sessionsState, onMutate: onMutate,
+          currentSessionId: currentSessionId, onMutate: onMutate,
           onOpenDetail: openDetail, onOpenEdit: openEdit,
         }))
       }
@@ -1032,7 +1041,7 @@ function apply(ctx) {
       for (let i = 0; i < done.length; i++) {
         doneEls.push(React.createElement(ScheduleRow, {
           key: done[i].item.id, item: done[i].item, dateStr: today, done: true,
-          currentSessionId: currentSessionId, sessionsState: sessionsState, onMutate: onMutate,
+          currentSessionId: currentSessionId, onMutate: onMutate,
           onOpenDetail: openDetail, onOpenEdit: openEdit,
         }))
       }
@@ -1057,7 +1066,6 @@ function apply(ctx) {
           data: data,
           today: today,
           currentSessionId: currentSessionId,
-          sessionsState: sessionsState,
           onMutate: onMutate,
           onOpenDetail: openDetail,
           onOpenEdit: openEdit,
@@ -1075,7 +1083,7 @@ function apply(ctx) {
         for (let j = 0; j < rows.length; j++) {
           rowEls.push(React.createElement(ScheduleRow, {
             key: rows[j].item.id, item: rows[j].item, dateStr: ds, done: rows[j].done,
-            currentSessionId: currentSessionId, sessionsState: sessionsState, onMutate: onMutate,
+            currentSessionId: currentSessionId, onMutate: onMutate,
             onOpenDetail: openDetail, onOpenEdit: openEdit,
           }))
         }
@@ -1091,7 +1099,7 @@ function apply(ctx) {
       body = React.createElement('div', null, dayEls)
     } else {
       body = React.createElement(HistoryView, {
-        data: data, currentSessionId: currentSessionId, sessionsState: sessionsState, onMutate: onMutate,
+        data: data, currentSessionId: currentSessionId, onMutate: onMutate,
         onOpenDetail: openDetail, onOpenEdit: openEdit,
       })
     }
@@ -1268,13 +1276,17 @@ function apply(ctx) {
     ctx.effect(() => sidebarRightTabs.register(scheduleTabDefinition()), "dsh-schedule: tab type");
   }
 
-  // 2. 注册右侧栏内容页
-  slots.inject("sidebar.right.pane.tab", () =>
+  // 2. 注册右侧栏内容页 (注册到 id 与 kind 双 key,确保 TabSlot 与 renderSlot 均能无缝命中)
+  slots.inject("sidebar.right.pane.tab", () => [
     slots.register(
       { name: "sidebar.right.pane.tab", key: SCHEDULE_ID },
       SchedulePage
-    )
-  );
+    ),
+    slots.register(
+      { name: "sidebar.right.pane.tab", key: SCHEDULE_KIND },
+      SchedulePage
+    ),
+  ]);
 
   // 3. 注册右上角会话顶栏图标按钮（并列在动画库/文件夹旁边）
   slots.inject("conversation.session.header.utilities", () =>
