@@ -72,4 +72,33 @@ test('built client bundle implements pointer-driven timeline drag and drop with 
   assert.ok(tlViewSection.includes('dsh-sched-tl-handle'), '已排期卡片与未排期卡片均应包含抓手节点')
 })
 
+test('built client bundle implements Time Ruler axis, draggable handles, and sliding interaction with cascade support', () => {
+  const clientCode = readFileSync(new URL('lib/client.js', root), 'utf8')
+
+  // 1. 验证时间轴标尺轨道与抓手样式类
+  assert.ok(clientCode.includes('.dsh-sched-tl-ruler-track'), 'CSS 应包含 ruler-track 标尺轨道样式')
+  assert.ok(clientCode.includes('.dsh-sched-tl-ruler-handle'), 'CSS 应包含 ruler-handle 标尺抓手样式')
+  assert.ok(clientCode.includes('.dsh-sched-tl-ruler-bubble'), 'CSS 应包含 ruler-bubble 动态浮动刻度气泡样式')
+  assert.ok(clientCode.includes('cursor: ns-resize'), '抓手样式应包含 ns-resize 调节指针光标')
+  assert.ok(clientCode.includes('dsh-sched-ruler-glow') || clientCode.includes('dsh-sched-pulse'), '抓手应包含呼吸光效动画')
+
+  // 2. 验证 DOM 中渲染标尺组件与抓手
+  const tlViewSection = clientCode.slice(clientCode.indexOf('function TimelineView('), clientCode.indexOf('function SchedulePanel('))
+  assert.ok(tlViewSection.includes('dsh-sched-tl-ruler-track'), 'TimelineView 应渲染 dsh-sched-tl-ruler-track 标尺轨道')
+  assert.ok(tlViewSection.includes('dsh-sched-tl-ruler-handle'), 'TimelineView 应渲染 dsh-sched-tl-ruler-handle 标尺抓手')
+  assert.ok(tlViewSection.includes('dsh-sched-tl-ruler-bubble'), 'TimelineView 应渲染 dsh-sched-tl-ruler-bubble 浮动气泡')
+  assert.ok(tlViewSection.includes('now-handle'), 'Now 当前时间节点应渲染专属 now-handle 游标抓手')
+
+  // 3. 验证 PointerEvent 与滑动计算
+  assert.ok(tlViewSection.includes('startRulerSlide'), 'TimelineView 应包含 startRulerSlide 滑动处理函数')
+  assert.ok(tlViewSection.includes('setPointerCapture'), '标尺抓手滑动应调用 setPointerCapture')
+  assert.ok(tlViewSection.includes('timeRulerShift'), '标尺滑动应调用 timeRulerShift 核心算法进行时序推导')
+  assert.ok(tlViewSection.includes('cascade'), '标尺滑动应支持 cascade 级联顺延')
+  assert.ok(tlViewSection.includes('snapMinutes'), '标尺滑动应支持 15m 刻度网格吸附')
+  assert.ok(tlViewSection.includes("onMutate('update'"), '松手完成滑动必须触发 onMutate update 保存新时间')
+
+  // 4. 验证多端触控 touch-action 与 user-select 防冲突
+  assert.ok(clientCode.includes('user-select: none'), 'CSS 应包含 user-select: none')
+})
+
 
