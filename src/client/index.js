@@ -755,7 +755,6 @@ function apply(ctx) {
     const onMutate = props.onMutate
     const onOpenDetail = props.onOpenDetail
 
-    // 缩放状态：常态 52px/h，拖拽时放大至 110px/h
     const [isDragging, setIsDragging] = React.useState(false)
     const [draggingItem, setDraggingItem] = React.useState(null)
     const [previewSlot, setPreviewSlot] = React.useState(null)
@@ -768,6 +767,8 @@ function apply(ctx) {
     const totalHeight = hourHeight * 24
     const scrollContainerRef = React.useRef(null)
     const autoScrollTimerRef = React.useRef(null)
+    const previewSlotRef = React.useRef(null)
+    const draggingItemRef = React.useRef(null)
 
     function timeToMinutes(t) {
       if (!t || !t.includes(':')) return 0
@@ -889,38 +890,61 @@ function apply(ctx) {
           handleAutoScroll(e.clientY)
           const rect = e.currentTarget.getBoundingClientRect()
           const scrollY = e.currentTarget.scrollTop
-          // 精确映射当前光标在时间轴坐标系里的位置，鼠标指到哪里，预览框就在哪里吸附，不改变视口
           const relY = e.clientY - rect.top + scrollY
-          const dur = draggingItem && draggingItem.duration ? draggingItem.duration : 45
+          const curItem = draggingItemRef.current || draggingItem
+          const dur = curItem && curItem.duration ? curItem.duration : 45
           const snap = yToSnappedRange(relY, dur)
+          previewSlotRef.current = snap
           setPreviewSlot(snap)
         },
         onDragLeave: (e) => {
           if (e.currentTarget.contains(e.relatedTarget)) return
           stopAutoScroll()
+          previewSlotRef.current = null
           setPreviewSlot(null)
         },
         onDrop: async (e) => {
           e.preventDefault()
+          e.stopPropagation()
           stopAutoScroll()
+          
+          let id = null
+          let dur = 45
+          const rawText = e.dataTransfer.getData('text/plain')
           const itemData = e.dataTransfer.getData('application/json')
-          let id = draggingItem ? draggingItem.id : null
+          
           if (itemData) {
             try {
               const parsed = JSON.parse(itemData)
-              if (parsed.id) id = parsed.id
+              if (parsed && parsed.id) { id = parsed.id; dur = parsed.duration || 45 }
             } catch (err) {}
           }
-          if (id && previewSlot) {
-            await onMutate('update', {
-              id: id,
-              startTime: previewSlot.start,
-              endTime: previewSlot.end,
-              date: today,
-            })
+          if (!id && rawText) {
+            id = rawText.trim()
+          }
+          if (!id && draggingItemRef.current) {
+            id = draggingItemRef.current.id
+            dur = draggingItemRef.current.duration || 45
+          }
+
+          // 取出最新即时的预览槽位
+          const targetSlot = previewSlotRef.current || previewSlot
+          if (id && targetSlot) {
+            try {
+              await onMutate('update', {
+                id: id,
+                startTime: targetSlot.start,
+                endTime: targetSlot.end,
+                date: today,
+              })
+            } catch (err) {
+              console.error('[dsh-schedule] Failed to drop task onto timeline:', err)
+            }
           }
           setIsDragging(false)
           setDraggingItem(null)
+          draggingItemRef.current = null
+          previewSlotRef.current = null
           setPreviewSlot(null)
         },
       },
@@ -973,7 +997,10 @@ function apply(ctx) {
               draggable: true,
               onDragStart: (e) => {
                 setIsDragging(true)
-                setDraggingItem({ id: r.item.id, duration: dur })
+                const dObj = { id: r.item.id, duration: dur }
+                setDraggingItem(dObj)
+                draggingItemRef.current = dObj
+                e.dataTransfer.setData('text/plain', r.item.id)
                 e.dataTransfer.setData('application/json', JSON.stringify({ id: r.item.id, duration: dur }))
                 e.dataTransfer.effectAllowed = 'move'
               },
@@ -1009,7 +1036,10 @@ function apply(ctx) {
               draggable: true,
               onDragStart: (e) => {
                 setIsDragging(true)
-                setDraggingItem({ id: r.item.id, duration: 45, initialTime: r.item.startTime || r.item.time })
+                const dObj = { id: r.item.id, duration: 45, initialTime: r.item.startTime || r.item.time }
+                setDraggingItem(dObj)
+                draggingItemRef.current = dObj
+                e.dataTransfer.setData('text/plain', r.item.id)
                 e.dataTransfer.setData('application/json', JSON.stringify({ id: r.item.id, duration: 45 }))
                 e.dataTransfer.effectAllowed = 'move'
               },
