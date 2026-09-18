@@ -558,4 +558,177 @@ test('logic: computeDropTime 根据屏幕指针 Y 坐标与时间轴视口精确
   assert.equal(dropInFree.endTime, '11:00')
 })
 
+test('logic: timeRulerShift 基础滑移（正向延后与反向提前）保持时长不变', () => {
+  const item = { id: 't1', title: '撰写周报', time: '10:00-11:00' } // 60分钟
+  // 1. 正向滑移 +15 分钟
+  const res1 = L.timeRulerShift(item, 15)
+  assert.equal(res1.startTime, '10:15')
+  assert.equal(res1.endTime, '11:15')
+  assert.equal(res1.time, '10:15-11:15')
+  assert.equal(res1.durationMinutes, 60)
+  assert.equal(res1.deltaMinutes, 15)
+
+  // 2. 反向滑移 -30 分钟
+  const res2 = L.timeRulerShift(item, -30)
+  assert.equal(res2.startTime, '09:30')
+  assert.equal(res2.endTime, '10:30')
+  assert.equal(res2.time, '09:30-10:30')
+  assert.equal(res2.durationMinutes, 60)
+  assert.equal(res2.deltaMinutes, -30)
+
+  // 3. 包装行对象 { item: ... } 兼容
+  const wrapped = { item: { id: 't1', title: '撰写周报', time: '10:00-11:00' } }
+  const res3 = L.timeRulerShift(wrapped, 20)
+  assert.equal(res3.startTime, '10:20')
+  assert.equal(res3.endTime, '11:20')
+})
+
+test('logic: timeRulerToMinutes 直接滑移定位到目标分钟数', () => {
+  const item = { id: 't2', title: '团队会议', startTime: '14:00', endTime: '15:30', time: '14:00-15:30' } // 90分钟
+  // 滑移到 16:00 (960 分钟)
+  const res = L.timeRulerToMinutes(item, 16 * 60)
+  assert.equal(res.startTime, '16:00')
+  assert.equal(res.endTime, '17:30')
+  assert.equal(res.time, '16:00-17:30')
+  assert.equal(res.startMinutes, 960)
+  assert.equal(res.endMinutes, 1050)
+  assert.equal(res.durationMinutes, 90)
+
+  // 单点时间 (默认 45 分钟) 定位
+  const singleItem = { id: 't3', title: '闪电沟通', time: '09:00' }
+  const resSingle = L.timeRulerToMinutes(singleItem, 10 * 60 + 30) // 10:30 (630)
+  assert.equal(resSingle.startTime, '10:30')
+  assert.equal(resSingle.endTime, '11:15')
+  assert.equal(resSingle.durationMinutes, 45)
+})
+
+test('logic: timeRulerShift 5 分钟与 15 分钟吸附步长 (snapMinutes)', () => {
+  const item = { id: 't1', title: '日常对齐', time: '10:00-10:45' } // 45分钟
+
+  // 1. 5 分钟吸附: +12 分钟 (10:12) -> 吸附至 10:10
+  const res5a = L.timeRulerShift(item, 12, { snapMinutes: 5 })
+  assert.equal(res5a.startTime, '10:10')
+  assert.equal(res5a.endTime, '10:55')
+
+  // 2. 5 分钟吸附: +13 分钟 (10:13) -> 吸附至 10:15
+  const res5b = L.timeRulerShift(item, 13, { snapMinutes: 5 })
+  assert.equal(res5b.startTime, '10:15')
+  assert.equal(res5b.endTime, '11:00')
+
+  // 3. 15 分钟吸附: +17 分钟 (10:17) -> 吸附至 10:15
+  const res15a = L.timeRulerShift(item, 17, { snapMinutes: 15 })
+  assert.equal(res15a.startTime, '10:15')
+  assert.equal(res15a.endTime, '11:00')
+
+  // 4. 15 分钟吸附: +25 分钟 (10:25) -> 吸附至 10:30
+  const res15b = L.timeRulerShift(item, 25, { snapMinutes: 15 })
+  assert.equal(res15b.startTime, '10:30')
+  assert.equal(res15b.endTime, '11:15')
+})
+
+test('logic: timeRulerShift 跨天与上下极值安全边界限制 (00:00 - 23:59)', () => {
+  const morningTask = { id: 'm1', title: '早起打卡', time: '00:15-00:45' } // 30分钟
+  // 向上大幅滑移 -60 分钟 -> 触及下限 00:00
+  const resUnder = L.timeRulerShift(morningTask, -60)
+  assert.equal(resUnder.startTime, '00:00')
+  assert.equal(resUnder.endTime, '00:30')
+  assert.equal(resUnder.startMinutes, 0)
+  assert.equal(resUnder.endMinutes, 30)
+
+  const nightTask = { id: 'n1', title: '晚班值守', time: '22:00-23:30' } // 90分钟
+  // 向下大幅滑移 +120 分钟 -> 触及当天 24:00 (1440) 上限, 启动 clampToDay 保护
+  const resOver = L.timeRulerShift(nightTask, 120, { clampToDay: true })
+  // 90 分钟任务最晚只能从 22:30 开始, 24:00 结束
+  assert.equal(resOver.startTime, '22:30')
+  assert.equal(resOver.endTime, '23:59') // clamped to 1439
+  assert.equal(resOver.startMinutes, 1350)
+  assert.equal(resOver.durationMinutes, 90)
+})
+
+test('logic: timeRulerShift cascade: true 级联顺延后续重叠任务 (Domino 效应)', () => {
+  const items = [
+    { id: 'a', title: '模块需求评审', time: '09:00-10:00' }, // 60m
+    { id: 'b', title: '架构方案讨论', time: '10:00-11:00' }, // 60m
+    { id: 'c', title: '代码提交与合并', time: '11:15-12:00' }, // 45m
+    { id: 'd', title: '下午茶休息', time: '15:00-15:30' },   // 远端任务不受影响
+  ]
+
+  // A 延后 45 分钟 -> A 变为 09:45 - 10:45
+  // B 原 10:00 开始, 与 A (结束于 10:45) 发生重叠, 顺延至 10:45 - 11:45
+  // C 原 11:15 开始, 与 B (结束于 11:45) 发生重叠, 顺延至 11:45 - 12:30
+  // D 原 15:00 开始, 远晚于 12:30, 不受影响
+  const res = L.timeRulerShift(items[0], 45, { cascade: true, items })
+
+  assert.equal(res.startTime, '09:45')
+  assert.equal(res.endTime, '10:45')
+  assert.equal(res.cascaded.length, 2)
+
+  // 顺延的第一个任务 B
+  assert.equal(res.cascaded[0].item.id, 'b')
+  assert.equal(res.cascaded[0].startTime, '10:45')
+  assert.equal(res.cascaded[0].endTime, '11:45')
+  assert.equal(res.cascaded[0].durationMinutes, 60)
+
+  // 顺延的第二个任务 C
+  assert.equal(res.cascaded[1].item.id, 'c')
+  assert.equal(res.cascaded[1].startTime, '11:45')
+  assert.equal(res.cascaded[1].endTime, '12:30')
+  assert.equal(res.cascaded[1].durationMinutes, 45)
+
+  // updates 数组包含 A, B, C
+  assert.equal(res.updates.length, 3)
+  assert.equal(res.updates[0].item.id, 'a')
+  assert.equal(res.updates[1].item.id, 'b')
+  assert.equal(res.updates[2].item.id, 'c')
+
+  // 若 cascade: false, 即使重叠也不顺延后续
+  const resNoCascade = L.timeRulerShift(items[0], 45, { cascade: false, items })
+  assert.equal(resNoCascade.cascaded.length, 0)
+  assert.equal(resNoCascade.updates.length, 1)
+})
+
+test('logic: timeRulerShift cascade 与 snapMinutes 组合时智能刻度向上吸附', () => {
+  const items = [
+    { id: 't1', title: '任务一', time: '10:00-10:20' }, // 20m, 结束于 10:20
+    { id: 't2', title: '任务二', time: '10:15-11:00' }, // 45m
+  ]
+  // 顺延 t1 到 10:05-10:25 (结束于 10:25)
+  // snapMinutes: 15, t2 原 10:15 被碰撞, 顺延起点 10:25 向上吸附到 10:30 (避免 10:15 产生倒退重叠)
+  const res = L.timeRulerShift(items[0], 5, { cascade: true, snapMinutes: 15, items })
+  assert.equal(res.cascaded.length, 1)
+  assert.equal(res.cascaded[0].startTime, '10:30')
+  assert.equal(res.cascaded[0].endTime, '11:15')
+})
+
+test('logic: timeRulerShift(items, baseTimeOrDelta, options) 批量数组模式与 targetId / 字符串基准', () => {
+  const items = [
+    { id: 'task-1', title: '任务一', time: '09:00-10:00' },
+    { id: 'task-2', title: '任务二', time: '10:00-11:00' },
+  ]
+  // 第一参数直接传 items 数组, baseTime 传 "09:30" 字符串, 指定 targetId 为 task-1
+  const res = L.timeRulerShift(items, '09:30', { targetId: 'task-1', cascade: true })
+  assert.equal(res.startTime, '09:30')
+  assert.equal(res.endTime, '10:30')
+  assert.equal(res.cascaded.length, 1)
+  assert.equal(res.cascaded[0].item.id, 'task-2')
+  assert.equal(res.cascaded[0].startTime, '10:30')
+  assert.equal(res.cascaded[0].endTime, '11:30')
+
+  // 返回的 items 包含全部更新后的对象
+  assert.equal(res.items.length, 2)
+  assert.equal(res.items[0].time, '09:30-10:30')
+  assert.equal(res.items[1].time, '10:30-11:30')
+})
+
+test('logic: timeRulerShift 与 timeRulerToMinutes 处理无排期待办项', () => {
+  const unscheduled = { id: 'u1', title: '待排期事项' } // 无 time
+  // 直接定位到 11:00 (660 分钟)
+  const res = L.timeRulerToMinutes(unscheduled, 660)
+  assert.equal(res.startTime, '11:00')
+  assert.equal(res.endTime, '11:45') // 默认 45 分钟
+  assert.equal(res.durationMinutes, 45)
+  assert.equal(res.time, '11:00-11:45')
+})
+
+
 

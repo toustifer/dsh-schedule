@@ -751,6 +751,277 @@ function computeDropTime(nodes, clientY, axisRect, movingItem, options = {}) {
   }
 }
 
+/**
+ * Time Ruler 标尺刻度滑动与批量时序联动推导核心算法 (Sorted³ / TimeList 风格)。
+ *
+ * 功能点:
+ * 1. 接收 targetItem (或 items 数组) 及 deltaMinutes (如 +15, -30) 或 targetMinutes / 目标时间 ("10:30");
+ * 2. 保持任务原本的时长 durationMinutes 不变;
+ * 3. 计算出新的 startTime (如 "10:30") 与 endTime (如 "11:30") 以及 time 字符串;
+ * 4. 支持 options.snapMinutes 网格吸附步长 (如 5 / 15 分钟);
+ * 5. 跨天安全边界限制 (00:00 - 23:59 / 0 - 1439 分钟)，防止越界;
+ * 6. 支持 options.cascade: true，对受影响的后续重叠任务计算出顺延后建议的新时间列表 (cascaded)。
+ *
+ * @param {object|Array} targetItemOrItems - 目标日程项/行，或完整日程数组
+ * @param {number|string|null} deltaMinutesOrBase - 滑动的分钟差 (可正可负) 或基准时间 ("10:30" / 目标分钟数)
+ * @param {object} [options] - 配置选项 (snapMinutes, cascade, clampToDay, minGapMinutes, items/allRows 等)
+ * @returns {object} { item, startTime, endTime, time, startMinutes, endMinutes, durationMinutes, deltaMinutes, cascaded, updates, items }
+ */
+function timeRulerShift(targetItemOrItems, deltaMinutesOrBase, options = {}) {
+  const opts = options || {}
+  let itemsList = null
+  let targetItem = targetItemOrItems
+
+  // 1. 支持第一参数传入 items 数组: timeRulerShift(items, baseTimeOrDelta, options)
+  if (Array.isArray(targetItemOrItems)) {
+    itemsList = targetItemOrItems
+    if (opts.targetId !== undefined) {
+      targetItem = itemsList.find(x => {
+        const it = unwrapRow(x)
+        return it && it.id === opts.targetId
+      }) || itemsList[0]
+    } else if (typeof opts.targetIndex === 'number' && itemsList[opts.targetIndex]) {
+      targetItem = itemsList[opts.targetIndex]
+    } else if (opts.targetItem) {
+      targetItem = opts.targetItem
+    } else {
+      // 默认选第一个有排期的项，或第 0 项
+      targetItem = itemsList.find(x => parseTimeBlock(unwrapRow(x)).hasTime) || itemsList[0]
+    }
+  } else if (Array.isArray(opts.items)) {
+    itemsList = opts.items
+  } else if (Array.isArray(opts.allRows)) {
+    itemsList = opts.allRows
+  }
+
+  const rawItem = unwrapRow(targetItem)
+  if (!rawItem && (!itemsList || itemsList.length === 0)) {
+    return {
+      item: null,
+      startTime: '',
+      endTime: '',
+      time: '',
+      startMinutes: null,
+      endMinutes: null,
+      durationMinutes: 0,
+      deltaMinutes: 0,
+      cascaded: [],
+      updates: [],
+      items: itemsList || [],
+    }
+  }
+
+  const block = parseTimeBlock(rawItem)
+
+  // 2. 确定任务原有时长 durationMinutes (保持不变)
+  let duration = 45
+  if (typeof opts.durationMinutes === 'number' && opts.durationMinutes > 0) {
+    duration = opts.durationMinutes
+  } else if (rawItem && typeof rawItem.durationMinutes === 'number' && rawItem.durationMinutes > 0) {
+    duration = rawItem.durationMinutes
+  } else if (block.hasTime && block.durationMinutes > 0) {
+    duration = block.durationMinutes
+  }
+  duration = Math.max(1, Math.round(duration))
+
+  // 3. 确定原有基准开始分钟数 originalStart
+  let originalStart = 540 // 默认 09:00
+  if (block.hasTime && block.startMinutes !== null && !isNaN(block.startMinutes)) {
+    originalStart = block.startMinutes
+  } else if (typeof opts.fallbackMinutes === 'number') {
+    originalStart = opts.fallbackMinutes
+  } else if (typeof opts.fallbackTime === 'string') {
+    const m = minutesOfDay(opts.fallbackTime)
+    if (!isNaN(m)) originalStart = m
+  }
+
+  // 4. 计算初步的目标 newStart
+  let delta = 0
+  let newStart = originalStart
+
+  if (typeof opts.targetMinutes === 'number' && !isNaN(opts.targetMinutes)) {
+    newStart = opts.targetMinutes
+    delta = newStart - originalStart
+  } else if (typeof deltaMinutesOrBase === 'number' && !isNaN(deltaMinutesOrBase)) {
+    delta = deltaMinutesOrBase
+    newStart = originalStart + delta
+  } else if (typeof deltaMinutesOrBase === 'string') {
+    const m = minutesOfDay(deltaMinutesOrBase)
+    if (!isNaN(m)) {
+      newStart = m
+      delta = newStart - originalStart
+    }
+  }
+
+  // 5. 吸附步长 (snapMinutes，例如 5 或 15 分钟)
+  const snap = typeof opts.snapMinutes === 'number' && opts.snapMinutes > 0 ? opts.snapMinutes : 0
+  if (snap > 0) {
+    newStart = Math.round(newStart / snap) * snap
+  }
+
+  // 6. 跨天安全边界限制 (00:00 - 23:59，0 到 1439 分钟)
+  const minM = typeof opts.minMinutes === 'number' ? Math.max(0, opts.minMinutes) : 0
+  const maxM = typeof opts.maxMinutes === 'number' ? Math.min(1439, opts.maxMinutes) : 1439
+  const clampToDay = opts.clampToDay !== false
+
+  if (clampToDay) {
+    const latestStart = Math.max(minM, Math.min(maxM, 1440 - duration))
+    newStart = Math.max(minM, Math.min(latestStart, newStart))
+  } else {
+    newStart = Math.max(minM, Math.min(maxM, newStart))
+  }
+
+  let newEnd = newStart + duration
+  if (clampToDay && newEnd > 1440) {
+    newEnd = 1440
+  }
+
+  const startTimeStr = minutesToTime(newStart)
+  const endTimeStr = minutesToTime(newEnd >= 1440 ? 1439 : newEnd)
+  const timeStr = startTimeStr + '-' + endTimeStr
+
+  const targetResult = {
+    item: rawItem,
+    startTime: startTimeStr,
+    endTime: endTimeStr,
+    time: timeStr,
+    startMinutes: newStart,
+    endMinutes: newEnd,
+    durationMinutes: duration,
+    deltaMinutes: newStart - originalStart,
+  }
+
+  // 7. 处理 cascade: true 级联顺延逻辑
+  const cascaded = []
+  if (opts.cascade && itemsList && itemsList.length > 0) {
+    const targetId = rawItem ? rawItem.id : null
+    let targetIdx = -1
+    if (targetId) {
+      targetIdx = itemsList.findIndex(x => {
+        const it = unwrapRow(x)
+        return it && it.id === targetId
+      })
+    }
+
+    const otherTasks = []
+    for (let i = 0; i < itemsList.length; i++) {
+      const it = unwrapRow(itemsList[i])
+      if (!it || (targetId && it.id === targetId)) continue
+      const b = parseTimeBlock(it)
+      if (b.hasTime) {
+        otherTasks.push({ item: it, block: b, originalIndex: i })
+      }
+    }
+
+    // 按起始时间主序、原始位置次序排序
+    otherTasks.sort((a, b) => {
+      const diff = a.block.startMinutes - b.block.startMinutes
+      if (diff !== 0) return diff
+      return a.originalIndex - b.originalIndex
+    })
+
+    const minGap = typeof opts.minGapMinutes === 'number' ? Math.max(0, opts.minGapMinutes) : 0
+    let cursorEnd = targetResult.endMinutes
+
+    for (let i = 0; i < otherTasks.length; i++) {
+      const ot = otherTasks[i]
+      const curStart = ot.block.startMinutes
+      const curDur = ot.block.durationMinutes
+
+      // 判断是否属于 target 的下游任务 (原本在 target 之后，或在列表中排在 target 之后)
+      const isDownstream = (targetIdx !== -1 && ot.originalIndex > targetIdx) ||
+        (curStart >= (block.hasTime ? block.startMinutes : originalStart))
+
+      if (isDownstream && curStart < cursorEnd + minGap) {
+        let cascadedStart = cursorEnd + minGap
+        if (snap > 0 && opts.snapCascaded !== false) {
+          // 向上对齐到 snap 步长，确保不产生新的重叠
+          cascadedStart = Math.ceil(cascadedStart / snap) * snap
+        }
+
+        if (clampToDay) {
+          const maxStart = Math.max(0, 1440 - curDur)
+          cascadedStart = Math.min(cascadedStart, maxStart)
+        }
+        cascadedStart = Math.min(1439, Math.max(0, cascadedStart))
+
+        let cascadedEnd = cascadedStart + curDur
+        if (clampToDay && cascadedEnd > 1440) {
+          cascadedEnd = 1440
+        }
+
+        const cStartStr = minutesToTime(cascadedStart)
+        const cEndStr = minutesToTime(cascadedEnd >= 1440 ? 1439 : cascadedEnd)
+        const cTimeStr = cStartStr + '-' + cEndStr
+
+        const cascadedEntry = {
+          item: ot.item,
+          startTime: cStartStr,
+          endTime: cEndStr,
+          time: cTimeStr,
+          startMinutes: cascadedStart,
+          endMinutes: cascadedEnd,
+          durationMinutes: curDur,
+          deltaMinutes: cascadedStart - curStart,
+        }
+
+        cascaded.push(cascadedEntry)
+        cursorEnd = cascadedEnd
+      } else if (isDownstream) {
+        cursorEnd = Math.max(cursorEnd, ot.block.endMinutes)
+      }
+    }
+  }
+
+  // 构造全量 updates 数组与 items 结果（若提供了 itemsList）
+  const updates = [targetResult, ...cascaded]
+  let updatedItems = null
+  if (itemsList) {
+    const updateMap = new Map()
+    for (const u of updates) {
+      if (u.item && u.item.id) {
+        updateMap.set(u.item.id, u)
+      }
+    }
+
+    updatedItems = itemsList.map(entry => {
+      const it = unwrapRow(entry)
+      if (it && updateMap.has(it.id)) {
+        const u = updateMap.get(it.id)
+        const newItem = {
+          ...it,
+          startTime: u.startTime,
+          endTime: u.endTime,
+          time: u.time,
+        }
+        if (entry !== it && typeof entry === 'object') {
+          return { ...entry, item: newItem }
+        }
+        return newItem
+      }
+      return entry
+    })
+  }
+
+  return {
+    ...targetResult,
+    cascaded,
+    updates,
+    items: updatedItems,
+  }
+}
+
+/**
+ * 标尺定位到绝对分钟数:
+ * timeRulerToMinutes(targetItem, targetMinutes, options)
+ */
+function timeRulerToMinutes(targetItemOrItems, targetMinutes, options = {}) {
+  return timeRulerShift(targetItemOrItems, null, {
+    ...options,
+    targetMinutes,
+  })
+}
+
 if (typeof window === 'undefined' && typeof module !== 'undefined' && module.exports !== undefined) {
   module.exports = {
     pad, fmt, todayStr, dateOf, isoDay, addDays, mondayOf, WEEKDAY_NAMES,
@@ -758,5 +1029,6 @@ if (typeof window === 'undefined' && typeof module !== 'undefined' && module.exp
     minutesToTime, minutesOfDay, parseTimeBlock, formatDuration, detectTimeConflicts, computeTimeSchedule,
     getCurrentMinutes, getOverdueMinutes, formatOverdueText, injectNowNode,
     calculateQuickAdjust, calculateCardMove, computeDropTime,
+    timeRulerShift, timeRulerToMinutes,
   }
 }
