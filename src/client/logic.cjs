@@ -523,12 +523,240 @@ function streakOf(data, today) {
   return n
 }
 
+/**
+ * 时间轴卡片上下拖动与时序重排核心算法 (Sorted3 / TimeList 风格):
+ * 用户按住已有日程卡片上下拖动时，根据指针落点或目标节点计算出卡片的新时间 (startTime 与 endTime)。
+ *
+ * 核心规则:
+ * 1. 保持卡片原有 durationMinutes 时长不变(除非 autoShrink 显式开启自适应);
+ * 2. 若拖动到某个 free 空闲时段，起始时间对齐该空闲段起点 (或指定 offsetMinutes 偏移)，结束时间 = newStartTime + durationMinutes;
+ * 3. 若拖动到另一个已排期任务的前面或后面 (options.position = 'before' | 'after'，默认 'after'):
+ *    - after: 新起始时间设为该任务的 endTime，结束时间相应顺延;
+ *    - before: 新结束时间设为该任务的 startTime，新起始时间 = targetStart - durationMinutes (保底 00:00);
+ * 4. 支持 options.snapMinutes 网格吸附 (如 5/15 分钟)，对齐整刻度;
+ * 5. 跨天/边界防护：保证 minutes 在 [0, 1439] 内，不会返回非法时间字符串;
+ * 6. 返回 { startTime, endTime, time, startMinutes, endMinutes, durationMinutes }，与系统字段一致。
+ *
+ * @param {object} movingItem - 待移动的日程项或行对象
+ * @param {object|null} targetNode - 拖拽落点目标节点 (free / task / now 节点或含时间的对象)
+ * @param {object} [options] - 计算选项
+ * @returns {{ startTime: string, endTime: string, time: string, startMinutes: number, endMinutes: number, durationMinutes: number }}
+ */
+function calculateCardMove(movingItem, targetNode, options = {}) {
+  const item = unwrapRow(movingItem)
+  const block = parseTimeBlock(item)
+
+  // 1. 确定时长 (保持原有 durationMinutes)
+  let duration = 45
+  if (typeof options.durationMinutes === 'number' && options.durationMinutes > 0) {
+    duration = options.durationMinutes
+  } else if (item && typeof item.durationMinutes === 'number' && item.durationMinutes > 0) {
+    duration = item.durationMinutes
+  } else if (block.hasTime && block.durationMinutes > 0) {
+    duration = block.durationMinutes
+  }
+  duration = Math.max(1, Math.round(duration))
+
+  // 2. 推导基准起始分钟数
+  let newStart = 540 // 默认 09:00
+  const position = options.position || 'after'
+  const offset = typeof options.offsetMinutes === 'number' ? options.offsetMinutes : 0
+
+  if (targetNode && typeof targetNode === 'object') {
+    if (targetNode.type === 'free') {
+      const freeStart = typeof targetNode.startMinutes === 'number'
+        ? targetNode.startMinutes
+        : minutesOfDay(targetNode.startTime || '')
+      newStart = (!isNaN(freeStart) ? freeStart : 540) + offset
+      if (options.autoShrink && typeof targetNode.durationMinutes === 'number' && duration > targetNode.durationMinutes) {
+        duration = Math.max(5, targetNode.durationMinutes)
+      }
+    } else if (targetNode.type === 'task') {
+      const tb = targetNode.block || parseTimeBlock(targetNode.item || targetNode)
+      const taskStart = tb.startMinutes !== null && !isNaN(tb.startMinutes)
+        ? tb.startMinutes
+        : minutesOfDay(tb.startTime || '')
+      const taskEnd = tb.endMinutes !== null && !isNaN(tb.endMinutes)
+        ? tb.endMinutes
+        : (!isNaN(taskStart) ? taskStart + (tb.durationMinutes || 45) : 600)
+
+      if (position === 'before') {
+        // 移到目标任务前面: 结束时间对齐目标开始时间
+        newStart = (!isNaN(taskStart) ? taskStart : 540) - duration
+      } else {
+        // 移到目标任务后面 (默认): 起始时间对齐目标结束时间
+        newStart = (!isNaN(taskEnd) ? taskEnd : 600) + offset
+      }
+    } else if (targetNode.type === 'now') {
+      const nowM = typeof targetNode.minutes === 'number'
+        ? targetNode.minutes
+        : minutesOfDay(targetNode.time || '')
+      newStart = (!isNaN(nowM) ? nowM : 540) + offset
+    } else if (typeof targetNode.startMinutes === 'number') {
+      newStart = targetNode.startMinutes + offset
+    } else if (typeof targetNode.startTime === 'string') {
+      const m = minutesOfDay(targetNode.startTime)
+      newStart = (!isNaN(m) ? m : 540) + offset
+    }
+  } else if (typeof options.targetMinutes === 'number' && !isNaN(options.targetMinutes)) {
+    newStart = options.targetMinutes + offset
+  } else if (typeof options.targetTime === 'string') {
+    const m = minutesOfDay(options.targetTime)
+    newStart = (!isNaN(m) ? m : 540) + offset
+  }
+
+  // 3. 网格吸附 (snapMinutes)
+  if (typeof options.snapMinutes === 'number' && options.snapMinutes > 0) {
+    newStart = Math.round(newStart / options.snapMinutes) * options.snapMinutes
+  }
+
+  // 4. 边界处理 (0 到 1439 分钟)
+  const minMinutes = typeof options.minMinutes === 'number' ? options.minMinutes : 0
+  const maxMinutes = typeof options.maxMinutes === 'number' ? options.maxMinutes : 1439
+  newStart = Math.max(minMinutes, Math.min(maxMinutes, newStart))
+
+  let newEnd = newStart + duration
+  if (newEnd > 1440) {
+    if (options.clampToDay) {
+      newStart = Math.max(0, 1440 - duration)
+      newEnd = 1440
+    } else {
+      newEnd = 1440
+    }
+  }
+
+  const startTimeStr = minutesToTime(newStart)
+  const endTimeStr = minutesToTime(newEnd >= 1440 ? 1439 : newEnd)
+  const timeStr = startTimeStr + '-' + endTimeStr
+
+  return {
+    startTime: startTimeStr,
+    endTime: endTimeStr,
+    time: timeStr,
+    startMinutes: newStart,
+    endMinutes: newEnd,
+    durationMinutes: duration,
+  }
+}
+
+/**
+ * 根据指针拖拽的 Y 轴坐标与时间轴视口位置，计算最近的落点时间与目标节点：
+ *
+ * @param {Array} nodes - computeTimeSchedule 返回的有序节点列表
+ * @param {number} clientY - 指针视口 Y 坐标
+ * @param {object} axisRect - { top: number, height: number, startMinutes?: number, endMinutes?: number }
+ * @param {object} movingItem - 待移动的日程项
+ * @param {object} [options] - 选项 (snapMinutes 等)
+ * @returns {object} calculateCardMove 结果扩展 { targetNode, pointerMinutes, position }
+ */
+function computeDropTime(nodes, clientY, axisRect, movingItem, options = {}) {
+  const rect = axisRect || {}
+  const top = typeof rect.top === 'number' ? rect.top : 0
+  const height = typeof rect.height === 'number' && rect.height > 0 ? rect.height : 600
+
+  // 计算视口比例与指针对应时间
+  const ratio = Math.max(0, Math.min(1, (clientY - top) / height))
+  const winStart = typeof rect.startMinutes === 'number' ? rect.startMinutes : 9 * 60
+  const winEnd = typeof rect.endMinutes === 'number' ? rect.endMinutes : 21 * 60
+  const rawPointerMinutes = winStart + ratio * (winEnd - winStart)
+
+  let pointerMinutes = rawPointerMinutes
+  if (typeof options.snapMinutes === 'number' && options.snapMinutes > 0) {
+    pointerMinutes = Math.round(pointerMinutes / options.snapMinutes) * options.snapMinutes
+  }
+  pointerMinutes = Math.max(0, Math.min(1439, Math.round(pointerMinutes)))
+
+  // 寻找匹配的 targetNode
+  let matchedNode = null
+  let derivedPosition = 'after'
+
+  if (Array.isArray(nodes) && nodes.length > 0) {
+    // 1. 优先检查是否落在实体 task 节点上 (前半段 before，后半段 after)
+    for (let i = 0; i < nodes.length; i++) {
+      const n = nodes[i]
+      if (n.type === 'task') {
+        const s = n.block ? n.block.startMinutes : minutesOfDay(n.item.startTime || '')
+        const e = n.block ? n.block.endMinutes : minutesOfDay(n.item.endTime || '')
+        if (pointerMinutes >= s && pointerMinutes <= e) {
+          matchedNode = n
+          const mid = (s + e) / 2
+          derivedPosition = pointerMinutes < mid ? 'before' : 'after'
+          break
+        }
+      }
+    }
+
+    // 2. 若未落在 task 上，检查是否落在 free 空闲段内
+    if (!matchedNode) {
+      for (let i = 0; i < nodes.length; i++) {
+        const n = nodes[i]
+        if (n.type === 'free') {
+          if (pointerMinutes >= n.startMinutes && pointerMinutes <= n.endMinutes) {
+            matchedNode = n
+            derivedPosition = 'inside'
+            break
+          }
+        }
+      }
+    }
+
+    // 3. 若未落在任一节点内，找距离最近的节点
+    if (!matchedNode) {
+      let minDist = Infinity
+      let bestNode = null
+      let bestPos = 'after'
+
+      for (let i = 0; i < nodes.length; i++) {
+        const n = nodes[i]
+        let nodeMid = 0
+        if (n.type === 'free') {
+          nodeMid = (n.startMinutes + n.endMinutes) / 2
+        } else if (n.type === 'task') {
+          const s = n.block ? n.block.startMinutes : 0
+          const e = n.block ? n.block.endMinutes : 0
+          nodeMid = (s + e) / 2
+        } else if (n.type === 'now') {
+          nodeMid = n.minutes || 0
+        }
+
+        const dist = Math.abs(pointerMinutes - nodeMid)
+        if (dist < minDist) {
+          minDist = dist
+          bestNode = n
+          if (n.type === 'task') {
+            bestPos = pointerMinutes < nodeMid ? 'before' : 'after'
+          } else {
+            bestPos = 'inside'
+          }
+        }
+      }
+
+      matchedNode = bestNode
+      derivedPosition = bestPos
+    }
+  }
+
+  const effectivePosition = options.position || derivedPosition
+  const moveResult = calculateCardMove(movingItem, matchedNode, {
+    ...options,
+    position: effectivePosition,
+    targetMinutes: pointerMinutes,
+  })
+
+  return {
+    ...moveResult,
+    targetNode: matchedNode,
+    pointerMinutes,
+    position: effectivePosition,
+  }
+}
+
 if (typeof window === 'undefined' && typeof module !== 'undefined' && module.exports !== undefined) {
   module.exports = {
     pad, fmt, todayStr, dateOf, isoDay, addDays, mondayOf, WEEKDAY_NAMES,
     matches, recurringLabel, sortRows, rowsFor, completedBetween, hasDoneOn, streakOf,
     minutesToTime, minutesOfDay, parseTimeBlock, formatDuration, detectTimeConflicts, computeTimeSchedule,
     getCurrentMinutes, getOverdueMinutes, formatOverdueText, injectNowNode,
-    calculateQuickAdjust,
+    calculateQuickAdjust, calculateCardMove, computeDropTime,
   }
 }

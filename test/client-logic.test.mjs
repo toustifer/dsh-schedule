@@ -405,3 +405,157 @@ test('logic: 快捷延期微调后若发生时间交叠，自动触发下游冲�
   assert.equal(nodeB.conflicts[0].id, 'a')
 })
 
+test('logic: calculateCardMove 保持卡片原有时长并在 free 空闲时段精准对齐', () => {
+  // 原卡片时长 90 分钟 (10:00 - 11:30)
+  const moving = { id: 'm1', title: '深度阅读', startTime: '10:00', endTime: '11:30' }
+  const freeNode = {
+    type: 'free',
+    startTime: '14:00',
+    endTime: '17:00',
+    startMinutes: 14 * 60,
+    endMinutes: 17 * 60,
+    durationMinutes: 180,
+  }
+
+  // 移动到空闲时段起点：起始对齐 14:00，结束时间 = 14:00 + 90m = 15:30
+  const res = L.calculateCardMove(moving, freeNode)
+  assert.equal(res.startTime, '14:00')
+  assert.equal(res.endTime, '15:30')
+  assert.equal(res.time, '14:00-15:30')
+  assert.equal(res.durationMinutes, 90)
+
+  // 带有 offsetMinutes (例如在空闲段内向下拖动 45 分钟)：起始 14:45，结束 16:15
+  const resOffset = L.calculateCardMove(moving, freeNode, { offsetMinutes: 45 })
+  assert.equal(resOffset.startTime, '14:45')
+  assert.equal(resOffset.endTime, '16:15')
+  assert.equal(resOffset.time, '14:45-16:15')
+  assert.equal(resOffset.durationMinutes, 90)
+})
+
+test('logic: calculateCardMove 拖到任务上方(before)与下方(after)的时序推导与顺延', () => {
+  const moving = { id: 'm1', title: '撰写文档', startTime: '09:00', endTime: '10:00' } // 60 分钟
+  const targetTask = {
+    type: 'task',
+    item: { id: 't1', title: '组会' },
+    block: {
+      hasTime: true,
+      startTime: '11:00',
+      endTime: '12:30',
+      startMinutes: 11 * 60,
+      endMinutes: 12 * 60 + 30,
+      durationMinutes: 90,
+    },
+  }
+
+  // 1. 拖到组会之后 (position: 'after'，默认)：新起点 = 目标 endTime (12:30)，时长 60m -> 13:30
+  const resAfter = L.calculateCardMove(moving, targetTask, { position: 'after' })
+  assert.equal(resAfter.startTime, '12:30')
+  assert.equal(resAfter.endTime, '13:30')
+  assert.equal(resAfter.time, '12:30-13:30')
+  assert.equal(resAfter.durationMinutes, 60)
+
+  // 2. 拖到组会之前 (position: 'before')：新终点 = 目标 startTime (11:00)，时长 60m -> 10:00 - 11:00
+  const resBefore = L.calculateCardMove(moving, targetTask, { position: 'before' })
+  assert.equal(resBefore.startTime, '10:00')
+  assert.equal(resBefore.endTime, '11:00')
+  assert.equal(resBefore.time, '10:00-11:00')
+  assert.equal(resBefore.durationMinutes, 60)
+})
+
+test('logic: calculateCardMove 无排期未定时任务默认 45 分钟并支持 autoShrink 与 snap', () => {
+  // 无时间任务，默认 45 分钟
+  const unassigned = { id: 'u1', title: '买牛奶', recurring: 'once' }
+  const smallFree = {
+    type: 'free',
+    startTime: '16:00',
+    endTime: '16:30',
+    startMinutes: 16 * 60,
+    endMinutes: 16 * 60 + 30,
+    durationMinutes: 30,
+  }
+
+  // 默认不 shrink: 保持 45 分钟 -> 16:00-16:45
+  const resDefault = L.calculateCardMove(unassigned, smallFree)
+  assert.equal(resDefault.startTime, '16:00')
+  assert.equal(resDefault.endTime, '16:45')
+  assert.equal(resDefault.durationMinutes, 45)
+
+  // 开启 autoShrink: 空间只有 30m，自适应缩为 30m -> 16:00-16:30
+  const resShrink = L.calculateCardMove(unassigned, smallFree, { autoShrink: true })
+  assert.equal(resShrink.startTime, '16:00')
+  assert.equal(resShrink.endTime, '16:30')
+  assert.equal(resShrink.durationMinutes, 30)
+
+  // 测试网格吸附 snapMinutes: 15
+  // 给定目标分钟 10:07 (607m)，吸附后到 10:00 (600m)
+  const resSnap1 = L.calculateCardMove(unassigned, null, { targetMinutes: 607, snapMinutes: 15 })
+  assert.equal(resSnap1.startTime, '10:00')
+  assert.equal(resSnap1.endTime, '10:45')
+
+  // 给定目标分钟 10:08 (608m)，吸附后到 10:15 (615m)
+  const resSnap2 = L.calculateCardMove(unassigned, null, { targetMinutes: 608, snapMinutes: 15 })
+  assert.equal(resSnap2.startTime, '10:15')
+  assert.equal(resSnap2.endTime, '11:00')
+})
+
+test('logic: calculateCardMove 跨天与上下极值边界保护', () => {
+  const moving = { id: 'm1', title: '长跑', startTime: '08:00', endTime: '09:00' } // 60 分钟
+
+  // 1. 上移到极早时刻 (目标任务在 00:30，向上拖 60 分钟)，不应越界为负数，最低为 00:00
+  const earlyTask = {
+    type: 'task',
+    block: { startTime: '00:30', endTime: '01:00', startMinutes: 30, endMinutes: 60, durationMinutes: 30 },
+  }
+  const resEarly = L.calculateCardMove(moving, earlyTask, { position: 'before' })
+  assert.equal(resEarly.startTime, '00:00')
+  assert.equal(resEarly.endTime, '01:00')
+  assert.equal(resEarly.startMinutes, 0)
+
+  // 2. 下移到夜晚极晚时刻 (目标任务在 23:30 结束，向后排 60 分钟)，不应溢出超过 23:59
+  const lateTask = {
+    type: 'task',
+    block: { startTime: '23:00', endTime: '23:30', startMinutes: 23 * 60, endMinutes: 23 * 60 + 30, durationMinutes: 30 },
+  }
+  const resLate = L.calculateCardMove(moving, lateTask, { position: 'after' })
+  assert.equal(resLate.startTime, '23:30')
+  assert.equal(resLate.endTime, '23:59') // clamped to 1439
+})
+
+test('logic: computeDropTime 根据屏幕指针 Y 坐标与时间轴视口精确定位落点', () => {
+  // 构建两个任务与中间的空闲段
+  // 09:00 - 10:00 (task1)
+  // 10:00 - 14:00 (free)
+  // 14:00 - 15:00 (task2)
+  const rows = [
+    { item: { id: 't1', title: '任务一', startTime: '09:00', endTime: '10:00', time: '09:00-10:00' } },
+    { item: { id: 't2', title: '任务二', startTime: '14:00', endTime: '15:00', time: '14:00-15:00' } },
+  ]
+  const sched = L.computeTimeSchedule(rows, { startHour: 9, endHour: 18 })
+  const movingItem = { id: 'm1', title: '待排项目', durationMinutes: 60 }
+
+  // 假定时间轴视口容器：top = 100, height = 540 (对应 9:00 到 18:00，共 9 小时 = 540 分钟，每像素 1 分钟)
+  const axisRect = {
+    top: 100,
+    height: 540,
+    startMinutes: 9 * 60,  // 540
+    endMinutes: 18 * 60,    // 1080
+  }
+
+  // 1. 指针拖动到 Y = 100 + 300 = 400 (对应 9:00 + 300m = 14:00，即 task2 开始处的前半段)
+  // 落入 task2 上半段 -> 判定为 before task2，新时间为 13:00 - 14:00
+  const dropNearTask2 = L.computeDropTime(sched.nodes, 400, axisRect, movingItem)
+  assert.ok(dropNearTask2.targetNode)
+  assert.equal(dropNearTask2.position, 'before')
+  assert.equal(dropNearTask2.startTime, '13:00')
+  assert.equal(dropNearTask2.endTime, '14:00')
+
+  // 2. 指针拖动到 Y = 100 + 120 = 220 (对应 9:00 + 120m = 11:00，落入 10:00 - 14:00 的 free 时段)
+  // 对齐该空闲段起点 10:00 -> 保持时长 60m 得到 10:00 - 11:00
+  const dropInFree = L.computeDropTime(sched.nodes, 220, axisRect, movingItem)
+  assert.ok(dropInFree.targetNode)
+  assert.equal(dropInFree.targetNode.type, 'free')
+  assert.equal(dropInFree.startTime, '10:00')
+  assert.equal(dropInFree.endTime, '11:00')
+})
+
+
