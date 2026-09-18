@@ -748,543 +748,6 @@ function apply(ctx) {
   }
 
   // ---- 垂直时间轴 (Time-blocking) ----
-  function TimelineView(props) {
-    const { data, today, currentSessionId, onMutate, onOpenDetail, onOpenEdit, onScheduleTime, timerSvc } = props
-    const [unscheduledOpen, setUnscheduledOpen] = React.useState(false)
-    const [selectedUnscheduledId, setSelectedUnscheduledId] = React.useState(null)
-    const [nowMinutes, setNowMinutes] = React.useState(() => getCurrentMinutes())
-    const [draggingItem, setDraggingItem] = React.useState(null)
-    const [dropPreview, setDropPreview] = React.useState(null)
-    const [selectedTaskId, setSelectedTaskId] = React.useState(null)
-    const [rulerSlideState, setRulerSlideState] = React.useState(null)
-
-    const axisRef = React.useRef(null)
-    const dragItemRef = React.useRef(null)
-    const dropPreviewRef = React.useRef(null)
-    const rulerSlideRef = React.useRef(null)
-    const dragCleanupRef = React.useRef(null)
-
-    // 动态流动游标: 每 60 秒自动刷新
-    React.useEffect(() => {
-      const update = () => setNowMinutes(getCurrentMinutes())
-      update()
-      if (timerSvc && typeof timerSvc.interval === 'function') {
-        return timerSvc.interval(update, 60000)
-      }
-      const timer = setInterval(update, 60000)
-      return () => clearInterval(timer)
-    }, [timerSvc])
-
-    // 清理可能未解绑的全局 pointer 监听
-    React.useEffect(() => {
-      return () => {
-        if (dragCleanupRef.current) {
-          dragCleanupRef.current()
-          dragCleanupRef.current = null
-        }
-      }
-    }, [])
-
-    const isToday = today === todayStr()
-    const rows = rowsFor(data, today)
-    const schedule = computeTimeSchedule(rows, {
-      startHour: 8,
-      endHour: 22,
-      nowMinutes: isToday ? nowMinutes : undefined,
-    })
-    const { nodes, unscheduled, stats } = schedule
-
-    const QUADRANT_MAP = {
-      q1: { title: '重要紧急', dot: '🔴', color: '#cf222e' },
-      q2: { title: '重要不紧急', dot: '🟡', color: '#0969da' },
-      q3: { title: '紧急不重要', dot: '🔵', color: '#d97706' },
-      q4: { title: '不重要不紧急', dot: '🟢', color: '#1a7f37' },
-    }
-
-    const handleAssignToFree = async (startTime) => {
-      if (!selectedUnscheduledId) return
-      await onMutate('update', { id: selectedUnscheduledId, startTime: startTime, time: startTime })
-      setSelectedUnscheduledId(null)
-    }
-
-    const startPointerDrag = (item, e) => {
-      if (e.button !== undefined && e.button !== 0) return
-      e.preventDefault()
-      e.stopPropagation()
-
-      if (dragCleanupRef.current) {
-        dragCleanupRef.current()
-        dragCleanupRef.current = null
-      }
-
-      const pointerId = e.pointerId
-      try {
-        if (e.currentTarget && typeof e.currentTarget.setPointerCapture === 'function') {
-          e.currentTarget.setPointerCapture(pointerId)
-        }
-      } catch (_) {}
-
-      dragItemRef.current = item
-      setDraggingItem(item)
-
-      const updatePreview = (clientY) => {
-        if (!axisRef.current) return null
-        const rect = axisRef.current.getBoundingClientRect()
-        const preview = computeDropTime(nodes, clientY, {
-          top: rect.top,
-          height: rect.height,
-          startMinutes: 8 * 60,
-          endMinutes: 22 * 60,
-        }, item, { snapMinutes: 15 })
-        setDropPreview(preview)
-        return preview
-      }
-
-      const initial = updatePreview(e.clientY)
-      dropPreviewRef.current = initial
-
-      const onPointerMove = (ev) => {
-        if (ev.pointerId !== pointerId) return
-        ev.preventDefault()
-        const p = updatePreview(ev.clientY)
-        dropPreviewRef.current = p
-      }
-
-      const onPointerUp = async (ev) => {
-        if (ev.pointerId !== pointerId) return
-        ev.preventDefault()
-        cleanup()
-
-        const curPreview = dropPreviewRef.current
-        const moving = dragItemRef.current
-
-        setDraggingItem(null)
-        setDropPreview(null)
-        dragItemRef.current = null
-        dropPreviewRef.current = null
-
-        if (moving && curPreview && curPreview.startTime && curPreview.endTime) {
-          const changed = moving.startTime !== curPreview.startTime ||
-                          moving.endTime !== curPreview.endTime ||
-                          moving.time !== curPreview.time
-          if (changed) {
-            await onMutate('update', {
-              id: moving.id,
-              startTime: curPreview.startTime,
-              endTime: curPreview.endTime,
-              time: curPreview.time,
-            })
-          }
-        }
-      }
-
-      const onPointerCancel = (ev) => {
-        if (ev.pointerId !== pointerId) return
-        cleanup()
-        setDraggingItem(null)
-        setDropPreview(null)
-        dragItemRef.current = null
-        dropPreviewRef.current = null
-      }
-
-      function cleanup() {
-        window.removeEventListener('pointermove', onPointerMove)
-        window.removeEventListener('pointerup', onPointerUp)
-        window.removeEventListener('pointercancel', onPointerCancel)
-        dragCleanupRef.current = null
-      }
-
-      dragCleanupRef.current = cleanup
-      window.addEventListener('pointermove', onPointerMove, { passive: false })
-      window.addEventListener('pointerup', onPointerUp)
-      window.addEventListener('pointercancel', onPointerCancel)
-    }
-
-    const startRulerSlide = (item, baseTimeStr, e, isNow = false) => {
-      if (e.button !== undefined && e.button !== 0) return
-      e.preventDefault()
-      e.stopPropagation()
-
-      if (dragCleanupRef.current) {
-        dragCleanupRef.current()
-        dragCleanupRef.current = null
-      }
-
-      const pointerId = e.pointerId
-      try {
-        if (e.currentTarget && typeof e.currentTarget.setPointerCapture === 'function') {
-          e.currentTarget.setPointerCapture(pointerId)
-        }
-      } catch (_) {}
-
-      let target = item
-      if (!target) {
-        if (selectedTaskId) {
-          const found = rows.find((r) => r.item && r.item.id === selectedTaskId)
-          if (found) target = found.item
-        }
-        if (!target) {
-          const firstTask = nodes.find((n) => n.type === 'task')
-          if (firstTask) target = firstTask.item
-        }
-      }
-      if (!target) return
-
-      setSelectedTaskId(target.id)
-
-      const startY = e.clientY
-      const allItemsList = rows.map((r) => r.item)
-      const PIXELS_PER_15MIN = 18
-
-      const computeShift = (currentY) => {
-        const dy = currentY - startY
-        const steps = Math.round(dy / PIXELS_PER_15MIN)
-        const deltaMinutes = steps * 15
-        const shiftResult = timeRulerShift(target, deltaMinutes, {
-          cascade: true,
-          snapMinutes: 15,
-          items: allItemsList,
-        })
-        return {
-          target,
-          startY,
-          currentY,
-          dy,
-          steps,
-          deltaMinutes,
-          shiftResult,
-          isNow,
-        }
-      }
-
-      const initial = computeShift(e.clientY)
-      rulerSlideRef.current = initial
-      setRulerSlideState(initial)
-
-      const onPointerMove = (ev) => {
-        if (ev.pointerId !== pointerId) return
-        ev.preventDefault()
-        const state = computeShift(ev.clientY)
-        rulerSlideRef.current = state
-        setRulerSlideState(state)
-      }
-
-      const onPointerUp = async (ev) => {
-        if (ev.pointerId !== pointerId) return
-        ev.preventDefault()
-        cleanup()
-
-        const finalState = rulerSlideRef.current
-        setRulerSlideState(null)
-        rulerSlideRef.current = null
-
-        if (finalState && finalState.shiftResult && finalState.deltaMinutes !== 0) {
-          const res = finalState.shiftResult
-          if (Array.isArray(res.updates) && res.updates.length > 0) {
-            for (let i = 0; i < res.updates.length; i++) {
-              const u = res.updates[i]
-              if (u.item && u.item.id) {
-                const it = u.item
-                if (it.startTime !== u.startTime || it.endTime !== u.endTime || it.time !== u.time) {
-                  await onMutate('update', {
-                    id: it.id,
-                    startTime: u.startTime,
-                    endTime: u.endTime,
-                    time: u.time,
-                  })
-                }
-              }
-            }
-          } else if (res.startTime && res.endTime) {
-            await onMutate('update', {
-              id: finalState.target.id,
-              startTime: res.startTime,
-              endTime: res.endTime,
-              time: res.time,
-            })
-          }
-        }
-      }
-
-      const onPointerCancel = (ev) => {
-        if (ev.pointerId !== pointerId) return
-        cleanup()
-        setRulerSlideState(null)
-        rulerSlideRef.current = null
-      }
-
-      function cleanup() {
-        window.removeEventListener('pointermove', onPointerMove)
-        window.removeEventListener('pointerup', onPointerUp)
-        window.removeEventListener('pointercancel', onPointerCancel)
-        dragCleanupRef.current = null
-      }
-
-      dragCleanupRef.current = cleanup
-      window.addEventListener('pointermove', onPointerMove, { passive: false })
-      window.addEventListener('pointerup', onPointerUp)
-      window.addEventListener('pointercancel', onPointerCancel)
-    }
-
-    return React.createElement('div', { className: 'dsh-sched-timeline' },
-      React.createElement('div', { className: 'dsh-sched-tl-statbar' },
-        React.createElement('span', { className: 'dsh-sched-tl-pill' }, '⏱️ 专注 ' + stats.totalBusyText),
-        React.createElement('span', { className: 'dsh-sched-tl-pill' }, '☕ 空闲 ' + stats.totalFreeText),
-        stats.conflictCount > 0
-          ? React.createElement('span', { className: 'dsh-sched-tl-pill warn' }, '⚠️ ' + stats.conflictCount + ' 处时段冲突')
-          : React.createElement('span', { className: 'dsh-sched-tl-pill' }, '✅ 无冲突撞车'),
-      ),
-      selectedUnscheduledId ? React.createElement('div', {
-        className: 'dsh-sched-tl-statbar',
-        style: { background: 'rgba(9,105,218,.1)', borderColor: 'rgba(9,105,218,.3)', color: '#0969da' },
-      },
-        React.createElement('span', null, '👉 已选中待办，点击下方任意「☕ 空闲」卡片即可一键填入该时段排程'),
-        React.createElement('button', {
-          className: 'dsh-sched-tl-free-btn',
-          onClick: () => setSelectedUnscheduledId(null),
-        }, '取消选择'),
-      ) : null,
-      rulerSlideState ? React.createElement('div', { className: 'dsh-sched-tl-ruler-bubble' },
-        React.createElement('span', null, '🕒 ' + rulerSlideState.shiftResult.startTime +
-          (rulerSlideState.shiftResult.endTime ? ' - ' + rulerSlideState.shiftResult.endTime : '') +
-          ' (' + (rulerSlideState.deltaMinutes >= 0 ? '+' : '') + rulerSlideState.deltaMinutes + 'm)'),
-        rulerSlideState.shiftResult.cascaded && rulerSlideState.shiftResult.cascaded.length > 0
-          ? React.createElement('span', { style: { fontSize: 10, opacity: .85, marginLeft: 6 } },
-              '· 级联顺延 ' + rulerSlideState.shiftResult.cascaded.length + ' 项')
-          : null,
-      ) : null,
-      React.createElement('div', { ref: axisRef, className: 'dsh-sched-tl-axis' },
-        React.createElement('div', {
-          className: 'dsh-sched-tl-ruler-track',
-          title: '时间标尺轨道 (Time Ruler Track: 按住可滑动调节时间)',
-          onPointerDown: (e) => {
-            const target = (selectedTaskId && (rows.find((r) => r.item && r.item.id === selectedTaskId) || {}).item) ||
-                           (nodes.find((node) => node.type === 'task') || {}).item
-            if (target) startRulerSlide(target, target.startTime, e)
-          },
-        }),
-        draggingItem && dropPreview ? React.createElement('div', { className: 'dsh-sched-tl-floating-hint' },
-          '🎯 移动「' + draggingItem.title + '」👉 移至 ' + dropPreview.startTime + ' - ' + dropPreview.endTime + ' (' + formatDuration(dropPreview.durationMinutes) + ')'
-        ) : null,
-        nodes.length === 0
-          ? React.createElement('div', { className: 'dsh-sched-empty' }, '今日暂无带具体时间的日程')
-          : nodes.map((n, idx) => {
-              if (n.type === 'now') {
-                const isNowSliding = rulerSlideState && rulerSlideState.isNow
-                return React.createElement('div', { key: 'now_' + n.time, className: 'dsh-sched-tl-node dsh-sched-tl-now-wrap' },
-                  React.createElement('div', {
-                    className: 'dsh-sched-tl-ruler-handle now-handle' + (isNowSliding ? ' sliding' : ''),
-                    title: '当前时间标尺游标 (按住可上下滑动调整时间)',
-                    onPointerDown: (e) => {
-                      const target = (selectedTaskId && (rows.find((r) => r.item && r.item.id === selectedTaskId) || {}).item) ||
-                                     (nodes.find((node) => node.type === 'task') || {}).item
-                      if (target) startRulerSlide(target, n.time, e, true)
-                    },
-                  },
-                    React.createElement('span', { className: 'dsh-sched-tl-ruler-arrows' }, '▲▼'),
-                    React.createElement('span', { className: 'dsh-sched-tl-now-label' }, n.label || (n.time + ' 现在')),
-                    React.createElement('span', { className: 'dsh-sched-tl-ruler-grip' }, '≡'),
-                  ),
-                  React.createElement('div', { className: 'dsh-sched-tl-now-dot' }),
-                  React.createElement('div', { className: 'dsh-sched-tl-now-line' }),
-                )
-              }
-              if (n.type === 'free') {
-                const isOver = draggingItem && dropPreview && dropPreview.targetNode === n
-                const canAssign = !!selectedUnscheduledId
-                return React.createElement('div', { key: 'free_' + idx, className: 'dsh-sched-tl-node' },
-                  React.createElement('div', { className: 'dsh-sched-tl-dot free' + (isOver ? ' dragover' : '') }),
-                  React.createElement('div', {
-                    className: 'dsh-sched-tl-free-box' + (isOver ? ' dragover' : ''),
-                    style: canAssign ? { borderColor: '#0969da', background: 'rgba(9,105,218,.08)', cursor: 'pointer' } : {},
-                    onClick: () => {
-                      if (canAssign) handleAssignToFree(n.startTime)
-                    },
-                  },
-                    React.createElement('span', null,
-                      isOver
-                        ? '✨ 移至 ' + dropPreview.startTime + ' - ' + dropPreview.endTime + ' (' + formatDuration(dropPreview.durationMinutes) + ')'
-                        : (canAssign
-                            ? '👉 点击将选中待办排入 ' + n.startTime + ' (' + n.durationText + ')'
-                            : '☕ 空闲 ' + n.startTime + ' - ' + n.endTime + ' (' + n.durationText + ')')),
-                    onScheduleTime && !canAssign && !isOver ? React.createElement('button', {
-                      className: 'dsh-sched-tl-free-btn',
-                      onClick: (e) => {
-                        e.stopPropagation()
-                        onScheduleTime(n.startTime, n.endTime)
-                      },
-                    }, '+ 排程') : null,
-                  ),
-                )
-              }
-              const isConflict = n.conflicts && n.conflicts.length > 0
-              const qInfo = QUADRANT_MAP[n.item.quadrant] || QUADRANT_MAP.q2
-              const overdueMinutes = isToday ? getOverdueMinutes(n, nowMinutes) : 0
-              const isOverdue = overdueMinutes > 0
-              const isThisDragging = draggingItem && draggingItem.id === n.item.id
-              const isTarget = draggingItem && dropPreview && dropPreview.targetNode === n && !isThisDragging
-              const showBeforeIndicator = isTarget && dropPreview.position === 'before'
-              const showAfterIndicator = isTarget && dropPreview.position === 'after'
-
-              const isSelected = selectedTaskId === n.item.id
-              const isThisRulerSliding = rulerSlideState && rulerSlideState.target && rulerSlideState.target.id === n.item.id
-              const cascadedEntry = rulerSlideState && rulerSlideState.shiftResult && rulerSlideState.shiftResult.cascaded &&
-                rulerSlideState.shiftResult.cascaded.find((c) => c.item && c.item.id === n.item.id)
-
-              const handleQuickAdjust = async (delta, e) => {
-                if (e && typeof e.stopPropagation === 'function') e.stopPropagation()
-                const adj = calculateQuickAdjust(n.block, delta)
-                if (adj) {
-                  await onMutate('update', { id: n.item.id, endTime: adj.newEndTime, time: adj.newTimeStr })
-                }
-              }
-
-              return React.createElement('div', {
-                key: n.item.id,
-                className: 'dsh-sched-tl-node' + (isSelected ? ' selected' : ''),
-              },
-                showBeforeIndicator ? React.createElement('div', { className: 'dsh-sched-tl-drop-indicator' },
-                  '✨ 移至此项前: ' + dropPreview.startTime + ' - ' + dropPreview.endTime
-                ) : null,
-                React.createElement('div', {
-                  className: 'dsh-sched-tl-dot' +
-                    (isConflict ? ' conflict' : '') +
-                    (isOverdue ? ' overdue' : '') +
-                    (isSelected ? ' selected' : ''),
-                }),
-                React.createElement('div', {
-                  className: 'dsh-sched-tl-ruler-handle' +
-                    (isSelected ? ' selected active' : '') +
-                    (isThisRulerSliding ? ' sliding' : ''),
-                  title: '时间标尺抓手：按住上下滑动调节时间 (15m 步进，向上提前/向下滑动延后)',
-                  onPointerDown: (e) => startRulerSlide(n.item, n.block.startTime, e),
-                  onClick: (e) => {
-                    e.stopPropagation()
-                    setSelectedTaskId(isSelected ? null : n.item.id)
-                  },
-                },
-                  React.createElement('span', { className: 'dsh-sched-tl-ruler-arrows' }, '▲▼'),
-                  React.createElement('span', { className: 'dsh-sched-tl-ruler-badge' },
-                    isThisRulerSliding
-                      ? rulerSlideState.shiftResult.startTime
-                      : (cascadedEntry ? cascadedEntry.startTime : n.block.startTime)
-                  ),
-                  React.createElement('span', { className: 'dsh-sched-tl-ruler-grip' }, '≡'),
-                ),
-                React.createElement('div', {
-                  className: 'dsh-sched-tl-card' +
-                    (isConflict ? ' conflict' : '') +
-                    (isOverdue ? ' overdue' : '') +
-                    (n.done ? ' done' : '') +
-                    (isThisDragging ? ' dragging' : '') +
-                    (isThisRulerSliding ? ' ruler-sliding' : '') +
-                    (isSelected ? ' selected' : '') +
-                    (showBeforeIndicator ? ' drop-before' : '') +
-                    (showAfterIndicator ? ' drop-after' : ''),
-                  onClick: () => setSelectedTaskId(n.item.id),
-                },
-                  React.createElement('div', { className: 'dsh-sched-tl-topline' },
-                    React.createElement('div', { className: 'dsh-sched-tl-time' },
-                      React.createElement('span', {
-                        className: 'dsh-sched-tl-handle',
-                        title: '按住上下拖动调整时间',
-                        onPointerDown: (e) => startPointerDrag(n.item, e),
-                      }, '⋮⋮'),
-                      React.createElement('button', {
-                        className: 'dsh-sched-circle' + (n.done ? ' done' : ''),
-                        onClick: () => onMutate('setDone', { id: n.item.id, date: today, done: !n.done }),
-                        title: n.done ? '标记未完成' : '标记已完成',
-                      }, n.done ? '✓' : ''),
-                      React.createElement('span', null,
-                        (isThisRulerSliding
-                          ? rulerSlideState.shiftResult.startTime + (n.block.isRange ? ' - ' + rulerSlideState.shiftResult.endTime : '')
-                          : (cascadedEntry
-                              ? cascadedEntry.startTime + (n.block.isRange ? ' - ' + cascadedEntry.endTime : '')
-                              : n.block.startTime + (n.block.isRange ? ' - ' + n.block.endTime : ''))
-                        )
-                      ),
-                      React.createElement('span', { className: 'dsh-sched-tl-dur' }, '(' + formatDuration(n.block.durationMinutes) + ')'),
-                      cascadedEntry ? React.createElement('span', {
-                        style: { fontSize: 10, color: '#0969da', background: 'rgba(9,105,218,.12)', padding: '1px 5px', borderRadius: 4, fontWeight: 600 }
-                      }, '⚡ 级联顺延') : null,
-                      React.createElement('span', { className: 'dsh-sched-tl-adjust-group' },
-                        React.createElement('button', {
-                          type: 'button',
-                          className: 'dsh-sched-tl-adjust-btn',
-                          title: '快捷延期 15 分钟',
-                          onClick: (e) => handleQuickAdjust(15, e),
-                        }, '+15m'),
-                        React.createElement('button', {
-                          type: 'button',
-                          className: 'dsh-sched-tl-adjust-btn',
-                          title: '快捷延期 30 分钟',
-                          onClick: (e) => handleQuickAdjust(30, e),
-                        }, '+30m'),
-                      ),
-                    ),
-                    React.createElement('span', { style: { fontSize: 10, color: qInfo.color, fontWeight: 600 } }, qInfo.dot + ' ' + qInfo.title),
-                  ),
-                  React.createElement('div', {
-                    className: 'dsh-sched-title' + (n.done ? ' done' : ''),
-                    style: { cursor: 'pointer', fontWeight: 600, whiteSpace: 'normal', lineHeight: 1.4 },
-                    onClick: () => onOpenDetail(n.item.id),
-                  }, n.item.title),
-                  n.item.note ? React.createElement('div', { className: 'dsh-sched-note', style: { maxWidth: '100%', whiteSpace: 'pre-wrap', lineHeight: 1.4 } }, n.item.note) : null,
-                  isOverdue ? React.createElement('div', { className: 'dsh-sched-tl-overdue' },
-                    formatOverdueText(overdueMinutes),
-                  ) : null,
-                  isConflict ? React.createElement('div', { className: 'dsh-sched-tl-warn' },
-                    '⚠️ 与「' + n.conflicts.map((c) => c.title + ' ' + (c.time || c.startTime)).join(' / ') + '」时段撞车！',
-                  ) : null,
-                ),
-                showAfterIndicator ? React.createElement('div', { className: 'dsh-sched-tl-drop-indicator' },
-                  '✨ 移至此项后: ' + dropPreview.startTime + ' - ' + dropPreview.endTime
-                ) : null,
-              )
-            }),
-      ),
-      unscheduled.length > 0 ? React.createElement('div', { className: 'dsh-sched-tl-unscheduled' },
-        React.createElement('div', {
-          className: 'dsh-sched-tl-un-header',
-          onClick: () => setUnscheduledOpen(!unscheduledOpen),
-          title: '点击展开/收起未安排具体时段的待办',
-        },
-          React.createElement('span', null, (unscheduledOpen ? '▾' : '▸') + ' 📋 待安排具体时段 (' + unscheduled.length + ')'),
-          React.createElement('span', { style: { fontSize: 11, opacity: .7 } }, unscheduledOpen ? '收起' : '展开查看'),
-        ),
-        unscheduledOpen ? React.createElement('div', { className: 'dsh-sched-tl-un-list' },
-          unscheduled.map((u) => {
-            const isDragging = draggingItem && draggingItem.id === u.item.id
-            const isSelected = selectedUnscheduledId === u.item.id
-            return React.createElement('div', {
-              key: u.item.id,
-              className: 'dsh-sched-tl-dragcard' + (isDragging ? ' dragging' : '') + (isSelected ? ' selected' : '') + (u.done ? ' done' : ''),
-              style: isSelected ? { borderColor: '#0969da', background: 'rgba(9,105,218,.12)', outline: '2px solid rgba(9,105,218,.4)' } : {},
-              onClick: () => {
-                setSelectedUnscheduledId(isSelected ? null : u.item.id)
-              },
-            },
-              React.createElement('span', {
-                className: 'qhandle dsh-sched-tl-handle',
-                title: '按住拖动安排时段',
-                onPointerDown: (e) => startPointerDrag(u.item, e),
-              }, '⋮⋮'),
-              React.createElement(ScheduleRow, {
-                item: u.item,
-                dateStr: today,
-                done: u.done,
-                currentSessionId: currentSessionId,
-                onMutate: onMutate,
-                onOpenDetail: onOpenDetail,
-                onOpenEdit: onOpenEdit,
-              }),
-            )
-          })
-        ) : null,
-      ) : null,
-    )
-  }
-
   
   function TimelineView(props) {
     const data = props.data
@@ -1292,7 +755,7 @@ function apply(ctx) {
     const onMutate = props.onMutate
     const onOpenDetail = props.onOpenDetail
 
-    // 缩放高度状态：常态 48px/h，拖拽时自动放大到 105px/h
+    // 缩放状态：常态 52px/h，拖拽时放大至 110px/h
     const [isDragging, setIsDragging] = React.useState(false)
     const [draggingItem, setDraggingItem] = React.useState(null)
     const [previewSlot, setPreviewSlot] = React.useState(null)
@@ -1301,11 +764,36 @@ function apply(ctx) {
       return String(d.getHours()).padStart(2, '0') + ':' + String(d.getMinutes()).padStart(2, '0')
     })
 
-    const hourHeight = isDragging ? 105 : 48
+    const hourHeight = isDragging ? 110 : 52
     const totalHeight = hourHeight * 24
-    const containerRef = React.useRef(null)
+    const scrollContainerRef = React.useRef(null)
+    const autoScrollTimerRef = React.useRef(null)
 
-    // 每 30 秒更新现在时间指示红线
+    function timeToMinutes(t) {
+      if (!t || !t.includes(':')) return 0
+      const [h, m] = t.split(':').map(Number)
+      return (h || 0) * 60 + (m || 0)
+    }
+
+    function minutesToTime(m) {
+      const clamped = Math.max(0, Math.min(24 * 60 - 15, m))
+      const h = Math.floor(clamped / 60)
+      const min = clamped % 60
+      return String(h).padStart(2, '0') + ':' + String(min).padStart(2, '0')
+    }
+
+    // 1. 初始化时自动平滑滚动到「当前时间」附近居中
+    React.useEffect(() => {
+      const scrollEl = scrollContainerRef.current
+      if (scrollEl) {
+        const currentM = timeToMinutes(nowTime)
+        // 将当前时间定位在视口上半部分 (往上偏移 120px)
+        const targetScrollTop = Math.max(0, (currentM / 60) * hourHeight - 140)
+        scrollEl.scrollTop = targetScrollTop
+      }
+    }, [])
+
+    // 实时更新当前时间红线
     React.useEffect(() => {
       const timer = setInterval(() => {
         const d = new Date()
@@ -1313,6 +801,51 @@ function apply(ctx) {
       }, 30000)
       return () => clearInterval(timer)
     }, [])
+
+    // 停止自动滚动循环
+    const stopAutoScroll = () => {
+      if (autoScrollTimerRef.current) {
+        clearInterval(autoScrollTimerRef.current)
+        autoScrollTimerRef.current = null
+      }
+    }
+
+    // 2. 拖拽边缘时触发时间轴自动上下巡航滚动 (Auto-scrolling near edges)
+    const handleAutoScroll = (clientY) => {
+      const el = scrollContainerRef.current
+      if (!el) return
+      const rect = el.getBoundingClientRect()
+      const topThreshold = rect.top + 70
+      const bottomThreshold = rect.bottom - 70
+
+      stopAutoScroll()
+      if (clientY < topThreshold) {
+        // 靠近顶部向上滚
+        const intensity = Math.min(20, Math.max(4, Math.floor((topThreshold - clientY) / 3)))
+        autoScrollTimerRef.current = setInterval(() => {
+          if (el.scrollTop > 0) el.scrollTop -= intensity
+        }, 16)
+      } else if (clientY > bottomThreshold) {
+        // 靠近底部向下滚
+        const intensity = Math.min(20, Math.max(4, Math.floor((clientY - bottomThreshold) / 3)))
+        autoScrollTimerRef.current = setInterval(() => {
+          el.scrollTop += intensity
+        }, 16)
+      }
+    }
+
+    // 磁吸附计算
+    function yToSnappedRange(y, durationMinutes = 45) {
+      const rawMin = (y / hourHeight) * 60
+      const snappedStartMin = Math.round(rawMin / 15) * 15
+      const snappedEndMin = snappedStartMin + durationMinutes
+      return {
+        start: minutesToTime(snappedStartMin),
+        end: minutesToTime(snappedEndMin),
+        top: (snappedStartMin / 60) * hourHeight,
+        height: (durationMinutes / 60) * hourHeight,
+      }
+    }
 
     const rows = rowsFor(data, today)
     const placedTasks = []
@@ -1326,37 +859,12 @@ function apply(ctx) {
         let et = item.endTime
         if (!et) {
           const [sh, sm] = st.split(':').map(Number)
-          const totalM = sh * 60 + sm + 45
-          et = String(Math.min(23, Math.floor(totalM / 60))).padStart(2, '0') + ':' + String(totalM % 60).padStart(2, '0')
+          const totalM = (sh || 0) * 60 + (sm || 0) + 45
+          et = minutesToTime(totalM)
         }
         placedTasks.push({ ...r, calculatedStart: st, calculatedEnd: et })
       } else {
         unplacedTasks.push(r)
-      }
-    }
-
-    function timeToMinutes(t) {
-      const [h, m] = t.split(':').map(Number)
-      return h * 60 + m
-    }
-
-    function minutesToTime(m) {
-      const clamped = Math.max(0, Math.min(24 * 60 - 15, m))
-      const h = Math.floor(clamped / 60)
-      const min = clamped % 60
-      return String(h).padStart(2, '0') + ':' + String(min).padStart(2, '0')
-    }
-
-    // 磁吸附计算：吸附到 15 分钟步长
-    function yToSnappedRange(y, durationMinutes = 45) {
-      const rawMin = (y / hourHeight) * 60
-      const snappedStartMin = Math.round(rawMin / 15) * 15
-      const snappedEndMin = snappedStartMin + durationMinutes
-      return {
-        start: minutesToTime(snappedStartMin),
-        end: minutesToTime(snappedEndMin),
-        top: (snappedStartMin / 60) * hourHeight,
-        height: (durationMinutes / 60) * hourHeight,
       }
     }
 
@@ -1366,39 +874,40 @@ function apply(ctx) {
     return React.createElement('div', { className: 'dsh-sched-tl-container' },
       React.createElement('div', { className: 'dsh-sched-tl-toolbar' },
         React.createElement('div', { className: 'dsh-sched-tl-badge' },
-          '⏱️ 24小时纵览' + (isDragging ? ' · ⚡ 智能放大变焦中' : '')
+          '⏱️ 24小时纵览' + (isDragging ? ' · ⚡ 智能放大变焦' : '')
         ),
         React.createElement('span', { className: 'dsh-sched-tl-hint' },
-          isDragging ? '松开鼠标即精准定位' : '按住下方或卡片拖动可自动放大'
+          isDragging ? '拖拽到顶部/底部边缘会自动翻滚时间轴' : '当前时刻已对齐 · 拖动时自动放大'
         ),
       ),
       React.createElement('div', {
         className: 'dsh-sched-tl-scroll',
-        ref: containerRef,
+        ref: scrollContainerRef,
         onDragOver: (e) => {
           e.preventDefault()
           e.dataTransfer.dropEffect = 'move'
+          handleAutoScroll(e.clientY)
           const rect = e.currentTarget.getBoundingClientRect()
           const scrollY = e.currentTarget.scrollTop
-          const relY = e.clientY - rect.top + scrollY - 8
+          const relY = e.clientY - rect.top + scrollY - 6
           const dur = draggingItem && draggingItem.duration ? draggingItem.duration : 45
           const snap = yToSnappedRange(relY, dur)
           setPreviewSlot(snap)
         },
         onDragLeave: (e) => {
           if (e.currentTarget.contains(e.relatedTarget)) return
+          stopAutoScroll()
           setPreviewSlot(null)
         },
         onDrop: async (e) => {
           e.preventDefault()
+          stopAutoScroll()
           const itemData = e.dataTransfer.getData('application/json')
           let id = draggingItem ? draggingItem.id : null
-          let dur = draggingItem ? draggingItem.duration : 45
           if (itemData) {
             try {
               const parsed = JSON.parse(itemData)
               if (parsed.id) id = parsed.id
-              if (parsed.duration) dur = parsed.duration
             } catch (err) {}
           }
           if (id && previewSlot) {
@@ -1415,7 +924,7 @@ function apply(ctx) {
         },
       },
         React.createElement('div', { className: 'dsh-sched-tl-grid', style: { height: totalHeight + 'px' } },
-          // 24小时刻度线
+          // 24 小时刻度
           Array.from({ length: 24 }).map((_, h) => {
             const hTop = h * hourHeight
             return React.createElement('div', {
@@ -1433,18 +942,18 @@ function apply(ctx) {
             )
           }),
 
-          // 当前时间指示线
+          // 当前时间指示红线与红点
           React.createElement('div', { className: 'dsh-sched-tl-now', style: { top: nowTop + 'px' } },
             React.createElement('span', { className: 'dsh-sched-tl-now-label' }, nowTime)
           ),
 
-          // 拖拽落点磁吸预览框
+          // 磁吸附落点半透明高亮预览框
           previewSlot ? React.createElement('div', {
             className: 'dsh-sched-tl-drop-preview',
-            style: { top: previewSlot.top + 'px', height: Math.max(30, previewSlot.height) + 'px' },
-          }, previewSlot.start + ' - ' + previewSlot.end) : null,
+            style: { top: previewSlot.top + 'px', height: Math.max(32, previewSlot.height) + 'px' },
+          }, '📍 ' + previewSlot.start + ' - ' + previewSlot.end) : null,
 
-          // 已排期任务色块
+          // 已排期色块
           placedTasks.map((r) => {
             const startM = timeToMinutes(r.calculatedStart)
             const endM = timeToMinutes(r.calculatedEnd)
@@ -1468,6 +977,7 @@ function apply(ctx) {
                 e.dataTransfer.effectAllowed = 'move'
               },
               onDragEnd: () => {
+                stopAutoScroll()
                 setIsDragging(false)
                 setDraggingItem(null)
                 setPreviewSlot(null)
@@ -1484,11 +994,11 @@ function apply(ctx) {
         ),
       ),
 
-      // 待排期任务池（按住拖入时间轴即可精确定位）
+      // 待排期任务池
       unplacedTasks.length > 0 ? React.createElement('div', { className: 'dsh-sched-tl-unplaced' },
         React.createElement('div', { className: 'dsh-sched-tl-unplaced-title' },
           React.createElement('span', null, '📋 待排期待办 (' + unplacedTasks.length + ')'),
-          React.createElement('span', { style: { fontSize: '10px', opacity: 0.6 } }, '拖入上方时间轴安排时间'),
+          React.createElement('span', { style: { fontSize: '10px', opacity: 0.6 } }, '按住拖入时间轴安排时间'),
         ),
         React.createElement('div', null,
           unplacedTasks.map((r) => {
@@ -1503,6 +1013,7 @@ function apply(ctx) {
                 e.dataTransfer.effectAllowed = 'move'
               },
               onDragEnd: () => {
+                stopAutoScroll()
                 setIsDragging(false)
                 setDraggingItem(null)
                 setPreviewSlot(null)
