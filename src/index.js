@@ -192,6 +192,13 @@ export function apply(ctx) {
       json(res, await store.snapshot())
     })
 
+    route('/setDone', async (req, res) => {
+        const body = await readBody(req)
+        if (typeof body.id !== 'string') throw new Error('参数无效')
+        await store.setDone(body.id, body.date, body.done !== false)
+        json(res, await store.snapshot())
+      })
+
     route('/set-done', async (req, res) => {
       const body = await readBody(req)
       if (typeof body.id !== 'string') throw new Error('参数无效')

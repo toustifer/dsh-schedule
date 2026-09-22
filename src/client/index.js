@@ -727,7 +727,7 @@ function apply(ctx) {
                       title: r.done ? '标记未完成' : '标记已完成',
                       onClick: (e) => {
                         e.stopPropagation()
-                        onMutate('setDone', { id: r.item.id, date: today, done: !r.done })
+                        onMutate('set-done', { id: r.item.id, date: today, done: !r.done })
                       },
                     }, r.done ? '✓' : ''),
                     React.createElement('span', {
@@ -749,7 +749,7 @@ function apply(ctx) {
 
   // ---- 垂直时间轴 (Time-blocking) ----
   
-  function TimelineView(props) {
+    function TimelineView(props) {
     const data = props.data
     const today = props.today
     const onMutate = props.onMutate
@@ -758,6 +758,7 @@ function apply(ctx) {
     const [isDragging, setIsDragging] = React.useState(false)
     const [draggingItem, setDraggingItem] = React.useState(null)
     const [previewSlot, setPreviewSlot] = React.useState(null)
+    const [selectedChipId, setSelectedChipId] = React.useState(null)
     const [nowTime, setNowTime] = React.useState(() => {
       const d = new Date()
       return String(d.getHours()).padStart(2, '0') + ':' + String(d.getMinutes()).padStart(2, '0')
@@ -766,8 +767,8 @@ function apply(ctx) {
     const hourHeight = 68
     const totalHeight = hourHeight * 24
     const scrollContainerRef = React.useRef(null)
+    const gridRef = React.useRef(null)
     const autoScrollTimerRef = React.useRef(null)
-    const previewSlotRef = React.useRef(null)
     const draggingItemRef = React.useRef(null)
 
     function timeToMinutes(t) {
@@ -783,12 +784,11 @@ function apply(ctx) {
       return String(h).padStart(2, '0') + ':' + String(min).padStart(2, '0')
     }
 
-    // 1. 初始化时自动平滑滚动到「当前时间」附近居中
+    // 初始化时自动平滑滚动到当前时间附近
     React.useEffect(() => {
       const scrollEl = scrollContainerRef.current
       if (scrollEl) {
         const currentM = timeToMinutes(nowTime)
-        // 将当前时间定位在视口上半部分 (往上偏移 120px)
         const targetScrollTop = Math.max(0, (currentM / 60) * hourHeight - 140)
         scrollEl.scrollTop = targetScrollTop
       }
@@ -803,7 +803,6 @@ function apply(ctx) {
       return () => clearInterval(timer)
     }, [])
 
-    // 停止自动滚动循环
     const stopAutoScroll = () => {
       if (autoScrollTimerRef.current) {
         clearInterval(autoScrollTimerRef.current)
@@ -811,7 +810,6 @@ function apply(ctx) {
       }
     }
 
-    // 2. 拖拽边缘时触发时间轴自动上下巡航滚动 (Auto-scrolling near edges)
     const handleAutoScroll = (clientY) => {
       const el = scrollContainerRef.current
       if (!el) return
@@ -821,13 +819,11 @@ function apply(ctx) {
 
       stopAutoScroll()
       if (clientY < topThreshold) {
-        // 靠近顶部向上滚
         const intensity = Math.min(20, Math.max(4, Math.floor((topThreshold - clientY) / 3)))
         autoScrollTimerRef.current = setInterval(() => {
           if (el.scrollTop > 0) el.scrollTop -= intensity
         }, 16)
       } else if (clientY > bottomThreshold) {
-        // 靠近底部向下滚
         const intensity = Math.min(20, Math.max(4, Math.floor((clientY - bottomThreshold) / 3)))
         autoScrollTimerRef.current = setInterval(() => {
           el.scrollTop += intensity
@@ -835,11 +831,10 @@ function apply(ctx) {
       }
     }
 
-    // 磁吸附计算
     function yToSnappedRange(y, durationMinutes = 45) {
-      const rawMin = (y / hourHeight) * 60
+      const rawMin = (Math.max(0, y) / hourHeight) * 60
       const snappedStartMin = Math.round(rawMin / 15) * 15
-      const snappedEndMin = snappedStartMin + durationMinutes
+      const snappedEndMin = Math.min(24 * 60, snappedStartMin + durationMinutes)
       return {
         start: minutesToTime(snappedStartMin),
         end: minutesToTime(snappedEndMin),
@@ -855,9 +850,9 @@ function apply(ctx) {
     for (let i = 0; i < rows.length; i++) {
       const r = rows[i]
       const item = r.item
-      const st = item.startTime || item.time
+      const st = item.startTime || (item.time && !item.time.includes('-') ? item.time : (item.time ? item.time.split('-')[0].trim() : ''))
       if (st && st.includes(':')) {
-        let et = item.endTime
+        let et = item.endTime || (item.time && item.time.includes('-') ? item.time.split('-')[1].trim() : '')
         if (!et) {
           const [sh, sm] = st.split(':').map(Number)
           const totalM = (sh || 0) * 60 + (sm || 0) + 45
@@ -872,13 +867,30 @@ function apply(ctx) {
     const nowMinutes = timeToMinutes(nowTime)
     const nowTop = (nowMinutes / 60) * hourHeight
 
+    // 核心保存逻辑
+    const applyTaskSchedule = async (id, start, end) => {
+      if (!id || !start || !end) return
+      try {
+        await onMutate('update', {
+          id: id,
+          time: start + '-' + end,
+          startTime: start,
+          endTime: end,
+          date: today,
+        })
+        if (typeof refresh === 'function') await refresh()
+      } catch (err) {
+        console.error('[dsh-schedule] applyTaskSchedule error:', err)
+      }
+    }
+
     return React.createElement('div', { className: 'dsh-sched-tl-container' },
       React.createElement('div', { className: 'dsh-sched-tl-toolbar' },
         React.createElement('div', { className: 'dsh-sched-tl-badge' },
-          '⏱️ 24小时时间轴' + (previewSlot ? (' · 🎯 吸附至 ' + previewSlot.start) : '')
+          '⏱️ 24小时时间轴' + (previewSlot ? (' · 🎯 吸附至 ' + previewSlot.start) : (selectedChipId ? ' · 👆 点击网格直接安排' : ''))
         ),
         React.createElement('span', { className: 'dsh-sched-tl-hint' },
-          isDragging ? '拖到目标位置松开即可安排' : '按住卡片直接拖动到指定时间刻度'
+          selectedChipId ? '已选任务，点击网格任意时间即可直接排期' : (isDragging ? '拖到目标刻度松开' : '按住卡片直接拖入时间轴')
         ),
       ),
       React.createElement('div', {
@@ -886,93 +898,62 @@ function apply(ctx) {
         ref: scrollContainerRef,
         onDragOver: (e) => {
           e.preventDefault()
-          e.dataTransfer.dropEffect = 'move'
           handleAutoScroll(e.clientY)
-          const rect = e.currentTarget.getBoundingClientRect()
-          const scrollY = e.currentTarget.scrollTop
-          const relY = e.clientY - rect.top + scrollY
-          const curItem = draggingItemRef.current || draggingItem
-          const dur = curItem && curItem.duration ? curItem.duration : 45
-          const snap = yToSnappedRange(relY, dur)
-          previewSlotRef.current = snap
-          window.__DSH_PREVIEW_SLOT__ = snap
-          setPreviewSlot(snap)
-        },
-        onDragLeave: (e) => {
-          if (e.currentTarget.contains(e.relatedTarget)) return
-          stopAutoScroll()
-          previewSlotRef.current = null
-          setPreviewSlot(null)
-        },
-        onDrop: async (e) => {
-          e.preventDefault()
-          e.stopPropagation()
-          stopAutoScroll()
-          
-          let id = null
-          let dur = 45
-          const rawText = e.dataTransfer.getData('text/plain')
-          const itemData = e.dataTransfer.getData('application/json')
-          
-          if (itemData) {
-            try {
-              const parsed = JSON.parse(itemData)
-              if (parsed && parsed.id) { id = parsed.id; dur = parsed.duration || 45 }
-            } catch (err) {}
-          }
-          if (!id && rawText) {
-            id = rawText.trim()
-          }
-          if (!id && draggingItemRef.current) {
-            id = draggingItemRef.current.id
-            dur = draggingItemRef.current.duration || 45
-          }
-          if (!id && window.__DSH_DRAG_ITEM__) {
-            id = window.__DSH_DRAG_ITEM__.id
-            dur = window.__DSH_DRAG_ITEM__.duration || 45
-          }
-
-          // 如果 previewSlotRef.current 恰好为空，以 drop 瞬间的光标 Y 重新实时算一遍！
-          let targetSlot = previewSlotRef.current || previewSlot || window.__DSH_PREVIEW_SLOT__
-          if (!targetSlot) {
-            const rect = e.currentTarget.getBoundingClientRect()
-            const scrollY = e.currentTarget.scrollTop
-            const relY = e.clientY - rect.top + scrollY
-            targetSlot = yToSnappedRange(relY, dur)
-          }
-
-          if (id && targetSlot) {
-            try {
-              await onMutate('update', {
-                id: id,
-                time: targetSlot.start + '-' + targetSlot.end,
-                startTime: targetSlot.start,
-                endTime: targetSlot.end,
-                date: today,
-              })
-              await refresh()
-            } catch (err) {
-              console.error('[dsh-schedule] Failed to drop task onto timeline:', err)
-            }
-          }
-          window.__DSH_DRAG_ITEM__ = null
-          window.__DSH_PREVIEW_SLOT__ = null
-          setIsDragging(false)
-          setDraggingItem(null)
-          draggingItemRef.current = null
-          previewSlotRef.current = null
-          setPreviewSlot(null)
         },
       },
         React.createElement('div', {
           className: 'dsh-sched-tl-grid',
-          style: { height: totalHeight + 'px', pointerEvents: 'auto' },
+          ref: gridRef,
+          style: { height: totalHeight + 'px', position: 'relative', cursor: selectedChipId ? 'pointer' : 'default' },
+          // 直接在网格上监听拖放，坐标计算 100% 绝对精确
           onDragOver: (e) => {
             e.preventDefault()
+            e.stopPropagation()
             e.dataTransfer.dropEffect = 'move'
+            handleAutoScroll(e.clientY)
+            const gridRect = e.currentTarget.getBoundingClientRect()
+            const relY = e.clientY - gridRect.top
+            const curItem = draggingItemRef.current || draggingItem
+            const dur = curItem && curItem.duration ? curItem.duration : 45
+            const snap = yToSnappedRange(relY, dur)
+            setPreviewSlot(snap)
           },
           onDrop: async (e) => {
-            // 事件冒泡由外层 scrollContainer 统一处理
+            e.preventDefault()
+            e.stopPropagation()
+            stopAutoScroll()
+
+            const gridRect = e.currentTarget.getBoundingClientRect()
+            const relY = e.clientY - gridRect.top
+            
+            let id = e.dataTransfer.getData('text/plain')
+            let dur = 45
+            const curItem = draggingItemRef.current || draggingItem || window.__DSH_DRAG_ITEM__
+            if (curItem) {
+              if (!id) id = curItem.id
+              if (curItem.duration) dur = curItem.duration
+            }
+
+            const slot = previewSlot || yToSnappedRange(relY, dur)
+            setIsDragging(false)
+            setDraggingItem(null)
+            draggingItemRef.current = null
+            window.__DSH_DRAG_ITEM__ = null
+            setPreviewSlot(null)
+
+            if (id && slot) {
+              await applyTaskSchedule(id, slot.start, slot.end)
+            }
+          },
+          // 点击时间网格任意位置：如果有选中的任务，直接安排到点击时间！
+          onClick: async (e) => {
+            if (!selectedChipId) return
+            const gridRect = e.currentTarget.getBoundingClientRect()
+            const relY = e.clientY - gridRect.top
+            const slot = yToSnappedRange(relY, 45)
+            const taskId = selectedChipId
+            setSelectedChipId(null)
+            await applyTaskSchedule(taskId, slot.start, slot.end)
           },
         },
           // 24 小时刻度
@@ -981,27 +962,27 @@ function apply(ctx) {
             return React.createElement('div', {
               key: h,
               className: 'dsh-sched-tl-hour' + (isDragging ? ' zoomed' : ''),
-              style: { top: hTop + 'px', height: hourHeight + 'px' },
+              style: { top: hTop + 'px', height: hourHeight + 'px', pointerEvents: 'none' },
             },
               React.createElement('span', { className: 'dsh-sched-tl-hour-label' },
                 String(h).padStart(2, '0') + ':00'
               ),
-              isDragging ? React.createElement('div', {
+              React.createElement('div', {
                 className: 'dsh-sched-tl-sub-hour',
-                style: { top: (hourHeight / 2) + 'px' },
-              }) : null,
+                style: { top: (hourHeight / 2) + 'px', pointerEvents: 'none' },
+              }),
             )
           }),
 
           // 当前时间指示红线与红点
-          React.createElement('div', { className: 'dsh-sched-tl-now', style: { top: nowTop + 'px' } },
+          React.createElement('div', { className: 'dsh-sched-tl-now', style: { top: nowTop + 'px', pointerEvents: 'none' } },
             React.createElement('span', { className: 'dsh-sched-tl-now-label' }, nowTime)
           ),
 
           // 磁吸附落点半透明高亮预览框
           previewSlot ? React.createElement('div', {
             className: 'dsh-sched-tl-drop-preview',
-            style: { top: previewSlot.top + 'px', height: Math.max(32, previewSlot.height) + 'px' },
+            style: { top: previewSlot.top + 'px', height: Math.max(32, previewSlot.height) + 'px', pointerEvents: 'none' },
           }, '📍 ' + previewSlot.start + ' - ' + previewSlot.end) : null,
 
           // 已排期色块
@@ -1019,25 +1000,31 @@ function apply(ctx) {
                 top: top + 'px',
                 height: height + 'px',
                 borderLeft: '4px solid ' + (r.item.quadrant === 'q1' ? '#cf222e' : r.item.quadrant === 'q3' ? '#d97706' : '#0969da'),
+                pointerEvents: 'auto',
               },
               draggable: true,
               onDragStart: (e) => {
+                e.stopPropagation()
                 setIsDragging(true)
                 const dObj = { id: r.item.id, duration: dur }
                 setDraggingItem(dObj)
                 draggingItemRef.current = dObj
                 window.__DSH_DRAG_ITEM__ = dObj
                 e.dataTransfer.setData('text/plain', r.item.id)
-                e.dataTransfer.setData('application/json', JSON.stringify({ id: r.item.id, duration: dur }))
                 e.dataTransfer.effectAllowed = 'move'
               },
               onDragEnd: () => {
                 stopAutoScroll()
                 setIsDragging(false)
                 setDraggingItem(null)
+                draggingItemRef.current = null
+                window.__DSH_DRAG_ITEM__ = null
                 setPreviewSlot(null)
               },
-              onClick: () => onOpenDetail(r.item.id),
+              onClick: (e) => {
+                e.stopPropagation()
+                onOpenDetail(r.item.id)
+              },
             },
               React.createElement('div', { className: 't-head' },
                 React.createElement('span', { className: 't-title' }, r.item.title),
@@ -1053,39 +1040,47 @@ function apply(ctx) {
       unplacedTasks.length > 0 ? React.createElement('div', { className: 'dsh-sched-tl-unplaced' },
         React.createElement('div', { className: 'dsh-sched-tl-unplaced-title' },
           React.createElement('span', null, '📋 待排期待办 (' + unplacedTasks.length + ')'),
-          React.createElement('span', { style: { fontSize: '10px', opacity: 0.6 } }, '按住拖入时间轴安排时间'),
+          React.createElement('span', { style: { fontSize: '10px', opacity: 0.6 } }, '拖拽或点击后点网格快速排期'),
         ),
         React.createElement('div', null,
           unplacedTasks.map((r) => {
+            const isSelected = selectedChipId === r.item.id
             return React.createElement('div', {
               key: r.item.id,
-              className: 'dsh-sched-tl-chip',
-              style: { display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '8px' },
+              className: 'dsh-sched-tl-chip' + (isSelected ? ' selected' : ''),
+              style: {
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                gap: '8px',
+                border: isSelected ? '1px solid #0969da' : '',
+                background: isSelected ? 'rgba(9,105,218,.15)' : '',
+              },
               draggable: true,
               onDragStart: (e) => {
+                e.stopPropagation()
                 setIsDragging(true)
-                const dObj = { id: r.item.id, duration: 45, initialTime: r.item.startTime || r.item.time }
+                const dObj = { id: r.item.id, duration: 45 }
                 setDraggingItem(dObj)
                 draggingItemRef.current = dObj
                 window.__DSH_DRAG_ITEM__ = dObj
                 e.dataTransfer.setData('text/plain', r.item.id)
-                e.dataTransfer.setData('application/json', JSON.stringify({ id: r.item.id, duration: 45 }))
                 e.dataTransfer.effectAllowed = 'move'
               },
               onDragEnd: () => {
                 stopAutoScroll()
                 setIsDragging(false)
                 setDraggingItem(null)
-                previewSlotRef.current = null
-                window.__DSH_PREVIEW_SLOT__ = null
+                draggingItemRef.current = null
+                window.__DSH_DRAG_ITEM__ = null
                 setPreviewSlot(null)
               },
             },
               React.createElement('span', {
                 style: { cursor: 'pointer', flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' },
-                onClick: () => onOpenDetail(r.item.id),
-                title: '点击查看详情，或按住左侧拖入时间轴'
-              }, '⋮⋮ ' + r.item.title),
+                onClick: () => setSelectedChipId(isSelected ? null : r.item.id),
+                title: '点击选中后点击上方时间轴任意位置直接安排，或按住拖拽'
+              }, (isSelected ? '👉 ' : '⋮⋮ ') + r.item.title),
               React.createElement('button', {
                 type: 'button',
                 className: 'dsh-sched-quick-set',
@@ -1095,14 +1090,7 @@ function apply(ctx) {
                   const currentM = timeToMinutes(nowTime)
                   const st = minutesToTime(Math.round(currentM / 15) * 15)
                   const et = minutesToTime(Math.round(currentM / 15) * 15 + 45)
-                  await onMutate('update', {
-                    id: r.item.id,
-                    time: st + '-' + et,
-                    startTime: st,
-                    endTime: et,
-                    date: today,
-                  })
-                  await refresh()
+                  await applyTaskSchedule(r.item.id, st, et)
                 },
               }, '⏱️ 排到当前')
             )
@@ -1111,7 +1099,6 @@ function apply(ctx) {
       ) : null,
     )
   }
-
   function SchedulePanel(props) {
     const data = useStore(() => store.data)
     const [view, setView] = React.useState('today')
