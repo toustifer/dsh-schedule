@@ -204,3 +204,48 @@ test('goals bar is a news-ticker marquee: seamless loop, manual scroll, pause on
   // 8) 空态仍可用
   assert.ok(code.includes('dsh-sched-goals-empty'), '无目标时应显示引导入口')
 })
+
+// ---------- 目标归属闭环(新建即挂 + 空转提醒) ----------
+
+test('新建日程时可直接挂上长期目标,并给出未归属提示', () => {
+  const code = bundle()
+
+  // 1) 新建表单接收目标列表与预选目标
+  assert.ok(code.includes('initialGoalId'), 'AddForm 应支持预选目标')
+  assert.ok(code.includes('goalPrefill'), '面板应持有预填目标状态')
+  assert.ok(/goals: allGoals/.test(code), '应把目标列表透传给新建表单')
+  assert.ok(/initialGoalId: goalPrefill/.test(code), '应把预填目标透传给新建表单')
+
+  // 2) 提交时把 goalId 一起写进 payload,并在成功后清空
+  assert.ok(code.includes('goalId: goalId || undefined'), 'payload 应带 goalId')
+  assert.ok(code.includes('setGoalId'), '应持有新建表单的目标选择状态')
+
+  // 3) 下拉里只列未放弃的目标,并保留「不归属」这一项
+  assert.ok(code.includes('pickableGoals'), '应过滤出可选目标')
+  assert.ok(/status !== 'dropped'/.test(code), '已放弃的目标不应出现在选择器里')
+  assert.ok(code.includes('🎯 不归属目标'), '应保留不归属选项')
+  assert.ok(code.includes('dsh-sched-add-hint'), '未归属时应给一句轻提示')
+  assert.ok(code.includes('.dsh-sched-add-hint.warn'), '未归属提示应有独立样式')
+})
+
+test('空转目标会被提醒:胶囊标「无日程」,详情给排期入口,页脚报总数', () => {
+  const code = bundle()
+
+  // 1) 胶囊:进行中且零关联 → 虚线 + 「无日程」
+  assert.ok(/const isIdle = goal\.status === 'active' && prog\.linkedTotal === 0/.test(code),
+    '空转判定应为「进行中且无关联日程」')
+  assert.ok(code.includes("isIdle ? ' idle' : ''"), '空转胶囊应有独立类名')
+  assert.ok(code.includes('.dsh-sched-goalchip.idle'), '空转胶囊应为虚线样式')
+  assert.ok(code.includes('dsh-sched-goalchip-warn'), '空转胶囊应有警示徽标')
+  assert.ok(code.includes('无日程'), '空转胶囊应显示「无日程」')
+
+  // 2) 详情:空列表给行动入口,且能带着目标 id 开新建表单
+  assert.ok(code.includes('onAddSchedule'), '目标详情应暴露排期回调')
+  assert.ok(code.includes('props.onAddSchedule(goal.id)'), '入口应带着目标 id 回传')
+  assert.ok(code.includes('照这个目标排一条日程'), '空目标应提供一键排期入口')
+  assert.ok(code.includes('function addScheduleForGoal'), '应实现从目标详情开新建表单')
+
+  // 3) 页脚常驻统计
+  assert.ok(code.includes('idleGoalCount'), '应统计空转目标数')
+  assert.ok(code.includes('个目标无日程'), '页脚应显示空转目标数')
+})

@@ -230,6 +230,29 @@ test('host registers the goal tools and HTTP data plane', () => {
   assert.ok(host.includes('goalArgsFrom'), '应有 snake_case → camelCase 的入参映射')
 })
 
+test('日程工具的 description 明写 goal_id —— 模型只看得见描述,看不见未文档化的参数', () => {
+  const host = readFileSync(new URL('lib/index.js', root), 'utf8')
+
+  /** 取 makeTool('name', '<description>', …) 里的描述串。 */
+  function descriptionOf(name) {
+    const at = host.indexOf("'" + name + "',")
+    assert.ok(at > 0, `应能定位 ${name} 的工具定义`)
+    const open = host.indexOf("'", at + name.length + 3)
+    const close = host.indexOf("'", open + 1)
+    return host.slice(open + 1, close)
+  }
+
+  const add = descriptionOf('dailytask_add')
+  const update = descriptionOf('dailytask_update')
+
+  assert.ok(add.includes('goal_id'),
+    'dailytask_add 的描述应提到 goal_id,否则模型不会主动挂目标')
+  assert.ok(update.includes('goal_id'),
+    'dailytask_update 的描述应提到 goal_id 及其解除语义')
+  // 描述里还应指明「为什么要挂」,而不只是列个字段名
+  assert.ok(/长期目标|目标/.test(add), '描述应说明 goal_id 指向长期目标')
+})
+
 test('client-side goal helpers stay in sync with the host model', () => {
   const logic = require('../src/client/logic.cjs')
   // 枚举必须与 store 对齐,否则 UI 会出现宿主不认的状态

@@ -42,7 +42,7 @@ export function apply(ctx) {
   // ---- 模型工具 ----
   ctx.tools.register(makeTool(
     'dailytask_add',
-    '添加一条日程。recurring 为 once(一次性,需要 date)时只出现在那一天;daily(每天)每天都出现;weekly(每周)在 weekdays 指定的星期几出现(1=周一 … 7=周日)。time 可为可选时间点(HH:MM)或时间块(HH:MM-HH:MM);也可单独传 start_time 与 end_time。quadrant 为四象限(q1重要紧急/q2重要不紧急/q3紧急不重要/q4不重要不紧急)。carry_over 仅对 once 生效:开启后若到期日未完成,下次查看时自动顺延到当天(历史日期保留)。',
+    '添加一条日程。recurring 为 once(一次性,需要 date)时只出现在那一天;daily(每天)每天都出现;weekly(每周)在 weekdays 指定的星期几出现(1=周一 … 7=周日)。time 可为可选时间点(HH:MM)或时间块(HH:MM-HH:MM);也可单独传 start_time 与 end_time。quadrant 为四象限(q1重要紧急/q2重要不紧急/q3紧急不重要/q4不重要不紧急)。carry_over 仅对 once 生效:开启后若到期日未完成,下次查看时自动顺延到当天(历史日期保留)。goal_id 为可选:若这条日程明显服务于某个长期目标(如备考、项目、训练计划),先用 dailytask_goal_list 查到目标 id 再一并传入,归属后该目标才能统计到推进进度。',
     {
       title: { type: 'string', required: true, description: '日程标题' },
       recurring: { type: 'string', description: '重复方式: once(默认) / daily / weekly' },
@@ -91,7 +91,7 @@ export function apply(ctx) {
 
   ctx.tools.register(makeTool(
     'dailytask_update',
-    '修改一条日程。只更新提供的字段: title / date / recurring / weekdays / time / start_time / end_time / quadrant / note / carry_over。',
+    '修改一条日程。只更新提供的字段: title / date / recurring / weekdays / time / start_time / end_time / quadrant / goal_id / note / carry_over。goal_id 传目标 id 表示归属到该长期目标,传空串解除归属。',
     {
       id: { type: 'string', required: true, description: '日程 id' },
       title: { type: 'string', description: '新标题' },
