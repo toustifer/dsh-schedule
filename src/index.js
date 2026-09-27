@@ -2,9 +2,13 @@
  * dsh-schedule — DeepSeek Harness 本地日程插件(Host 半身)。
  *
  * 提供:
- *   1. 六个模型工具 dailytask_add / dailytask_list / dailytask_set_done /
- *      dailytask_update / dailytask_delete / dailytask_link_session
- *      —— 在任意对话里说"帮我记一条日程"即可由 AI 直接操作同一份数据。
+ *   1. 十一个模型工具:
+ *      日程层 —— dailytask_add / dailytask_list / dailytask_set_done /
+ *                dailytask_update / dailytask_delete / dailytask_link_session
+ *      目标层 —— dailytask_goal_add / dailytask_goal_list / dailytask_goal_update /
+ *                dailytask_goal_delete / dailytask_link_goal
+ *      —— 在任意对话里说"帮我记一条日程"或"帮我立个四级目标",即可由 AI
+ *      直接操作同一份数据。
  *   2. /api/dailytask/* HTTP API —— 浏览器面板的数据面。
  *
  * 数据长期保存在 ~/.dsh/dsh-schedule-data.json(首次启动自动迁移旧文件)。
@@ -46,6 +50,7 @@ export function apply(ctx) {
       start_time: { type: 'string', description: '可选起始时间 HH:MM' },
       end_time: { type: 'string', description: '可选结束时间 HH:MM' },
       quadrant: { type: 'string', description: '四象限优先级: q1(重要紧急)/q2(重要不紧急)/q3(紧急不重要)/q4(不重要不紧急)' },
+      goal_id: { type: 'string', description: '可选:归属的长期目标 id(用 dailytask_goal_list 查)' },
       note: { type: 'string', description: '可选备注' },
       carry_over: { type: 'boolean', description: '仅 once 生效:未完成自动顺延到当天(默认 false)' },
     },
@@ -95,6 +100,7 @@ export function apply(ctx) {
       start_time: { type: 'string', description: '起始时间 HH:MM' },
       end_time: { type: 'string', description: '结束时间 HH:MM' },
       quadrant: { type: 'string', description: '四象限优先级: q1(重要紧急)/q2(重要不紧急)/q3(紧急不重要)/q4(不重要不紧急)' },
+      goal_id: { type: 'string', description: '归属的长期目标 id;传空串表示解除归属' },
       note: { type: 'string', description: '备注' },
       carry_over: { type: 'boolean', description: '仅 once 生效:未完成自动顺延(默认 false)' },
     },
@@ -127,6 +133,120 @@ export function apply(ctx) {
       if (exec === null || exec === undefined || exec.agent === undefined) throw new Error('需要会话上下文')
       if (args === null || typeof args !== 'object') throw new Error('参数无效')
       return store.linkSession(String(args.id), exec.agent.id, args.link !== false)
+    },
+  ))
+
+  // ---- 目标层(Goal)工具 ----
+
+  /** 工具入参是 snake_case,store 用 camelCase —— 这里统一映射一次。 */
+  function goalArgsFrom(a) {
+    const pick = (snake, camel) => (a[snake] !== undefined ? a[snake] : a[camel])
+    const out = {
+      title: a.title,
+      horizon: a.horizon,
+      startDate: pick('start_date', 'startDate'),
+      endDate: pick('end_date', 'endDate'),
+      status: a.status,
+      note: a.note,
+    }
+    const mt = pick('metric_type', 'metricType')
+    const mtg = pick('metric_target', 'metricTarget')
+    const mc = pick('metric_current', 'metricCurrent')
+    const mu = pick('metric_unit', 'metricUnit')
+    if (mt !== undefined || mtg !== undefined || mc !== undefined || mu !== undefined) {
+      out.metric = {}
+      if (mt !== undefined) out.metric.type = mt
+      if (mtg !== undefined) out.metric.target = mtg
+      if (mc !== undefined) out.metric.current = mc
+      if (mu !== undefined) out.metric.unit = mu
+    } else if (a.metric !== null && typeof a.metric === 'object') {
+      out.metric = a.metric
+    }
+    return out
+  }
+
+  ctx.tools.register(makeTool(
+    'dailytask_goal_add',
+    '新建一个长期目标(跨月 / 学期 / 学年)。horizon: term(学期)/year(学年)/custom(自定义,默认)。metric_type: score(数值,如分数)/count(计数,如套数)/percent(百分比)/milestone(里程碑,达成即 100%)。end_date 缺省时按 horizon 自动推导(学期 +140 天 / 学年 +280 天 / 自定义 +90 天)。',
+    {
+      title: { type: 'string', required: true, description: '目标标题,如「大学英语四级 600 分」' },
+      horizon: { type: 'string', description: 'term(学期) / year(学年) / custom(自定义,默认)' },
+      start_date: { type: 'string', description: '开始日期 YYYY-MM-DD,缺省今天' },
+      end_date: { type: 'string', description: '结束日期 YYYY-MM-DD,缺省按 horizon 推导' },
+      metric_type: { type: 'string', description: 'score / count / percent(默认) / milestone' },
+      metric_target: { type: 'number', description: '目标值,如 600;milestone 强制为 1' },
+      metric_current: { type: 'number', description: '当前进度值,缺省 0' },
+      metric_unit: { type: 'string', description: '单位,如「分」「套」;percent 缺省 %' },
+      note: { type: 'string', description: '备注,如「每周 2 套真题 + 每天 40 分钟听力」' },
+    },
+    async (args) => {
+      if (args === null || typeof args !== 'object') throw new Error('参数无效')
+      return store.addGoal(goalArgsFrom(args))
+    },
+  ))
+
+  ctx.tools.register(makeTool(
+    'dailytask_goal_list',
+    '列出长期目标,每条附带进度(percent / current / target / remainingDays)与关联的日程清单。可按 status 过滤。',
+    {
+      status: { type: 'string', description: '可选过滤: active(进行中) / done(已达成) / dropped(已放弃)' },
+    },
+    async (args) => {
+      const status = args !== null && typeof args === 'object' ? args.status : undefined
+      return { goals: await store.listGoals(status) }
+    },
+  ))
+
+  ctx.tools.register(makeTool(
+    'dailytask_goal_update',
+    '更新一个长期目标:进度(metric_current)、状态、时间跨度、备注等。只更新提供的字段;metric_current 会被夹在 0~metric_target 之间。',
+    {
+      id: { type: 'string', required: true, description: '目标 id' },
+      title: { type: 'string', description: '新标题' },
+      horizon: { type: 'string', description: 'term / year / custom' },
+      status: { type: 'string', description: 'active / done / dropped' },
+      start_date: { type: 'string', description: '新开始日期 YYYY-MM-DD' },
+      end_date: { type: 'string', description: '新结束日期 YYYY-MM-DD' },
+      metric_type: { type: 'string', description: 'score / count / percent / milestone' },
+      metric_target: { type: 'number', description: '新目标值' },
+      metric_current: { type: 'number', description: '新当前进度值(自动夹在 0~target)' },
+      metric_unit: { type: 'string', description: '新单位' },
+      note: { type: 'string', description: '新备注' },
+    },
+    async (args) => {
+      if (args === null || typeof args !== 'object') throw new Error('参数无效')
+      if (typeof args.id !== 'string' || args.id === '') throw new Error('缺少目标 id')
+      const patch = goalArgsFrom(args)
+      if (typeof args.title === 'string') patch.title = args.title
+      return store.updateGoal(String(args.id), patch)
+    },
+  ))
+
+  ctx.tools.register(makeTool(
+    'dailytask_goal_delete',
+    '删除一个长期目标,并自动把归属它的日程解除关联(日程本身不会被删除)。',
+    {
+      id: { type: 'string', required: true, description: '目标 id' },
+    },
+    async (args) => {
+      if (args === null || typeof args !== 'object') throw new Error('参数无效')
+      if (typeof args.id !== 'string' || args.id === '') throw new Error('缺少目标 id')
+      return store.removeGoal(String(args.id))
+    },
+  ))
+
+  ctx.tools.register(makeTool(
+    'dailytask_link_goal',
+    '把一个日程归属到某个长期目标(或解除归属)。goal_id 传空串或省略表示解除归属。',
+    {
+      id: { type: 'string', required: true, description: '日程 id' },
+      goal_id: { type: 'string', description: '目标 id;传空串表示解除归属' },
+    },
+    async (args) => {
+      if (args === null || typeof args !== 'object') throw new Error('参数无效')
+      if (typeof args.id !== 'string' || args.id === '') throw new Error('缺少日程 id')
+      const gid = args.goal_id !== undefined ? args.goal_id : args.goalId
+      return store.linkGoal(String(args.id), gid === undefined ? '' : gid)
     },
   ))
 
@@ -210,6 +330,39 @@ export function apply(ctx) {
       const body = await readBody(req)
       if (typeof body.id !== 'string') throw new Error('参数无效')
       await store.linkSession(body.id, body.sessionId, body.link !== false)
+      json(res, await store.snapshot())
+    })
+
+    // ---- 目标层数据面 ----
+    route('/goal-add', async (req, res) => {
+      const body = await readBody(req)
+      await store.addGoal(body)
+      json(res, await store.snapshot())
+    })
+
+    route('/goal-list', async (_req, res) => {
+      json(res, { goals: await store.listGoals() })
+    })
+
+    route('/goal-update', async (req, res) => {
+      const body = await readBody(req)
+      if (typeof body.id !== 'string') throw new Error('参数无效')
+      await store.updateGoal(body.id, body)
+      json(res, await store.snapshot())
+    })
+
+    route('/goal-remove', async (req, res) => {
+      const body = await readBody(req)
+      if (typeof body.id !== 'string') throw new Error('参数无效')
+      await store.removeGoal(body.id)
+      json(res, await store.snapshot())
+    })
+
+    route('/link-goal', async (req, res) => {
+      const body = await readBody(req)
+      if (typeof body.id !== 'string') throw new Error('参数无效')
+      const gid = body.goalId !== undefined ? body.goalId : body.goal_id
+      await store.linkGoal(body.id, gid === undefined ? '' : gid)
       json(res, await store.snapshot())
     })
   })

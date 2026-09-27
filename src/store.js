@@ -29,6 +29,14 @@ const DATE_RE = /^\d{4}-\d{2}-\d{2}$/
 const TIME_RE = /^\d{1,2}:\d{2}$/
 const TIME_RANGE_RE = /^(\d{1,2}:\d{2})\s*[-~至到]\s*(\d{1,2}:\d{2})$/
 
+// ---- 目标层(Goal)枚举 ----
+/** 时间跨度:学期 / 学年 / 自定义起止 */
+export const GOAL_HORIZONS = ['term', 'year', 'custom']
+/** 度量方式:数值 / 计数 / 百分比 / 里程碑(0 或 1) */
+export const GOAL_METRIC_TYPES = ['score', 'count', 'percent', 'milestone']
+/** 目标状态:进行中 / 已达成 / 已放弃 */
+export const GOAL_STATUSES = ['active', 'done', 'dropped']
+
 export function parseTimeFields(inputTime, inputStartTime, inputEndTime) {
   let startTime = ''
   let endTime = ''
@@ -178,7 +186,141 @@ function normalizeStoredItem(raw) {
   if (!item.startTime) item.startTime = ''
   if (!item.endTime) item.endTime = ''
   item.carryOver = item.carryOver === true
+  if (typeof item.goalId !== 'string' || item.goalId === '') item.goalId = null
   return item
+}
+
+/** 从入参里取 goalId(兼容驼峰与下划线,空串归一为 null)。 */
+function pickGoalId(args) {
+  const a = args.goalId !== undefined ? args.goalId : args.goal_id
+  return typeof a === 'string' && a.trim() !== '' ? a.trim() : null
+}
+
+/**
+ * 载入时惰性补齐一条目标的结构缺省值。
+ * 与 normalizeStoredItem 一致:只补不删,永不因缺字段丢弃用户数据。
+ */
+function normalizeStoredGoal(raw) {
+  const g = raw
+  if (!Array.isArray(g.linkedSessions)) g.linkedSessions = []
+  if (!GOAL_HORIZONS.includes(g.horizon)) g.horizon = 'custom'
+  if (!GOAL_STATUSES.includes(g.status)) g.status = 'active'
+  if (g.metric === null || typeof g.metric !== 'object') g.metric = {}
+  const m = g.metric
+  if (!GOAL_METRIC_TYPES.includes(m.type)) m.type = 'percent'
+  const t = Number(m.target)
+  m.target = Number.isFinite(t) && t > 0 ? t : (m.type === 'milestone' ? 1 : 100)
+  const cur = Number(m.current)
+  m.current = Number.isFinite(cur) ? Math.max(0, Math.min(m.target, cur)) : 0
+  if (typeof m.unit !== 'string') m.unit = ''
+  if (typeof g.startDate !== 'string') g.startDate = ''
+  if (typeof g.endDate !== 'string') g.endDate = ''
+  if (typeof g.note !== 'string') g.note = ''
+  if (typeof g.title !== 'string') g.title = ''
+  return g
+}
+
+/**
+ * 校验并规范化一条新增目标。
+ * metric.current 缺省 0;milestone 强制 target = 1(达成/未达成)。
+ */
+export function normalizeGoal(args, now = Date.now(), today = localDateStr()) {
+  const title = String(args.title === undefined ? '' : args.title).trim()
+  if (title === '') throw new Error('目标标题不能为空')
+
+  const horizon = GOAL_HORIZONS.includes(args.horizon) ? args.horizon : 'custom'
+
+  let startDate = ''
+  if (args.startDate !== undefined && args.startDate !== null && args.startDate !== '') {
+    startDate = parseDateStr(args.startDate)
+    if (startDate === '') throw new Error('无效开始日期(需要真实的 YYYY-MM-DD): ' + args.startDate)
+  } else {
+    startDate = cleanDate(today) || localDateStr()
+  }
+
+  let endDate = ''
+  if (args.endDate !== undefined && args.endDate !== null && args.endDate !== '') {
+    endDate = parseDateStr(args.endDate)
+    if (endDate === '') throw new Error('无效结束日期(需要真实的 YYYY-MM-DD): ' + args.endDate)
+  } else {
+    // 缺省跨度:学年 ≈ 280 天,学期 ≈ 140 天,自定义 ≈ 90 天
+    const span = horizon === 'year' ? 280 : horizon === 'term' ? 140 : 90
+    endDate = addDays(startDate, span)
+  }
+  if (endDate < startDate) throw new Error('结束日期不能早于开始日期: ' + startDate + ' ~ ' + endDate)
+
+  const rawMetric = args.metric !== null && typeof args.metric === 'object' ? args.metric : {}
+  const type = GOAL_METRIC_TYPES.includes(rawMetric.type) ? rawMetric.type : 'percent'
+  let target = Number(rawMetric.target)
+  if (type === 'milestone') target = 1
+  else if (!Number.isFinite(target) || target <= 0) target = type === 'percent' ? 100 : 1
+  let current = Number(rawMetric.current)
+  if (!Number.isFinite(current) || current < 0) current = 0
+  if (current > target) current = target
+
+  let unit = typeof rawMetric.unit === 'string' ? rawMetric.unit : ''
+  if (unit === '' && type === 'percent') unit = '%'
+
+  return {
+    id: 'goal_' + now.toString(36) + '_' + Math.random().toString(36).slice(2, 8),
+    title,
+    horizon,
+    startDate,
+    endDate,
+    metric: { type, target, current, unit },
+    status: GOAL_STATUSES.includes(args.status) ? args.status : 'active',
+    note: typeof args.note === 'string' ? args.note : '',
+    linkedSessions: [],
+    createdAt: now,
+  }
+}
+
+/** horizon → 中文标签(供 UI / 工具输出复用)。 */
+export function horizonLabel(h) {
+  if (h === 'term') return '学期'
+  if (h === 'year') return '学年'
+  return '自定义'
+}
+
+/**
+ * 计算目标进度。
+ * 采用手动填写的 metric.current;当 current 为 0 而目标下挂了日程时,
+ * 退化为「关联日程的完成率」推导 —— 仅用于展示,不写回数据(derived 标记)。
+ */
+export function goalProgress(goal, data, today = localDateStr()) {
+  if (goal === null || typeof goal !== 'object') {
+    return { current: 0, target: 1, percent: 0, remainingDays: 0, linkedTotal: 0, linkedDone: 0, derived: false }
+  }
+  const m = goal.metric !== null && typeof goal.metric === 'object' ? goal.metric : {}
+  const target = Number.isFinite(Number(m.target)) && Number(m.target) > 0 ? Number(m.target) : 1
+  let current = Number(m.current)
+  if (!Number.isFinite(current) || current < 0) current = 0
+  if (current > target) current = target
+
+  // 关联日程统计:某日程只要「曾完成过任意一天」即计入已完成
+  let linkedTotal = 0
+  let linkedDone = 0
+  if (data !== null && typeof data === 'object' && Array.isArray(data.items)) {
+    for (const it of data.items) {
+      if (it === null || typeof it !== 'object' || it.goalId !== goal.id) continue
+      linkedTotal += 1
+      const rec = data.done && data.done[it.id]
+      if (rec !== undefined && Object.keys(rec).length > 0) linkedDone += 1
+    }
+  }
+
+  const todayStr = cleanDate(today) || localDateStr()
+  let remainingDays = 0
+  if (typeof goal.endDate === 'string' && DATE_RE.test(goal.endDate)) {
+    remainingDays = Math.max(0, Math.round(
+      (Date.parse(goal.endDate + 'T00:00:00Z') - Date.parse(todayStr + 'T00:00:00Z')) / 86400000
+    ))
+  }
+  const derived = current === 0 && linkedTotal > 0
+  const effCurrent = derived ? linkedDone : current
+  const percent = Math.max(0, Math.min(100, Math.round((effCurrent / target) * 100)))
+
+  return { current: effCurrent, target, percent, remainingDays, linkedTotal, linkedDone, derived }
 }
 
 /** 校验并规范化一条新增日程。 */
@@ -215,6 +357,7 @@ export function normalizeItem(args, now = Date.now(), today = localDateStr()) {
     startTime: timeParsed.startTime,
     endTime: timeParsed.endTime,
     quadrant,
+    goalId: pickGoalId(args),
     note: typeof args.note === 'string' ? args.note : '',
     linkedSessions: [],
     carryOver,
@@ -230,7 +373,7 @@ export class ScheduleStore {
   constructor(opts = {}) {
     this.path = opts.path || DEFAULT_DATA_PATH
     this.legacyPath = opts.legacyPath !== undefined ? opts.legacyPath : LEGACY_DATA_PATH
-    this.data = { items: [], done: {} }
+    this.data = { items: [], done: {}, goals: [] }
     this.loaded = false
     this.protectUnparsedFile = false
     this.writeChain = Promise.resolve()
@@ -267,6 +410,10 @@ export class ScheduleStore {
               .filter((item) => item !== null && typeof item === 'object')
               .map(normalizeStoredItem),
             done: parsed.done && typeof parsed.done === 'object' ? parsed.done : {},
+            // 旧数据文件无 goals 字段 → 视为空数组(与既有迁移逻辑一致)
+            goals: Array.isArray(parsed.goals)
+              ? parsed.goals.filter((g) => g !== null && typeof g === 'object').map(normalizeStoredGoal)
+              : [],
           }
         } else {
           // 结构不对同样按损坏处理 —— 否则空数据会在下一次保存时覆盖原文件
@@ -278,7 +425,7 @@ export class ScheduleStore {
         if (source === this.legacyPath) {
           try {
             await fsp.mkdir(join(this.path, '..'), { recursive: true })
-            await fsp.writeFile(this.path, JSON.stringify({ version: 1, items: this.data.items, done: this.data.done }, null, 2), 'utf8')
+            await fsp.writeFile(this.path, JSON.stringify({ version: 2, items: this.data.items, done: this.data.done, goals: this.data.goals }, null, 2), 'utf8')
             await fsp.rm(this.legacyPath, { force: true })
           } catch (err) {
             console.error('[dsh-schedule] legacy data migration failed', err)
@@ -319,7 +466,7 @@ export class ScheduleStore {
     }
     await fsp.mkdir(join(this.path, '..'), { recursive: true })
     const tmp = this.path + '.tmp'
-    await fsp.writeFile(tmp, JSON.stringify({ version: 1, items: this.data.items, done: this.data.done }, null, 2), 'utf8')
+    await fsp.writeFile(tmp, JSON.stringify({ version: 2, items: this.data.items, done: this.data.done, goals: this.data.goals }, null, 2), 'utf8')
     await fsp.rename(tmp, this.path)
   }
 
@@ -353,7 +500,7 @@ export class ScheduleStore {
       } catch (err) {
         console.error('[dsh-schedule] save failed (kept in memory)', err)
       }
-      return { items: d.items, done: d.done }
+      return { items: d.items, done: d.done, goals: d.goals }
     })
     this.writeChain = run.then(() => undefined, () => undefined)
     return run
@@ -384,6 +531,7 @@ export class ScheduleStore {
         linkedSessions: i.linkedSessions,
         carryOver: i.carryOver === true,
         rolloverDates: i.rolloverDates,
+        goalId: i.goalId === undefined ? null : i.goalId,
         done: !!(d.done[i.id] && d.done[i.id][date]),
       }))
   }
@@ -392,7 +540,7 @@ export class ScheduleStore {
   async snapshot(today = localDateStr()) {
     await this.reconcile(today)
     const d = await this.load()
-    return { items: d.items, done: d.done }
+    return { items: d.items, done: d.done, goals: d.goals }
   }
 
   addItem(args, now = Date.now(), today = localDateStr()) {
@@ -437,6 +585,11 @@ export class ScheduleStore {
         item.startTime = timeParsed.startTime
         item.endTime = timeParsed.endTime
       }
+      if (patch.goalId !== undefined || patch.goal_id !== undefined) {
+        // 显式传 null / '' 表示解除归属
+        const gid = patch.goalId !== undefined ? patch.goalId : patch.goal_id
+        item.goalId = typeof gid === 'string' && gid.trim() !== '' ? gid.trim() : null
+      }
       if (typeof patch.note === 'string') item.note = patch.note
       const carryArg = patch.carryOver !== undefined ? patch.carryOver : patch.carry_over
       if (carryArg !== undefined) item.carryOver = item.recurring === 'once' && carryArg === true
@@ -470,6 +623,109 @@ export class ScheduleStore {
       const item = result.items.find((i) => i.id === id)
       return { ok: true, id, date, done, title: item ? item.title : undefined }
     })
+  }
+
+  // ==================== 目标层(Goal)操作 ====================
+
+  addGoal(args, now = Date.now(), today = localDateStr()) {
+    const goal = normalizeGoal(args, now, today)
+    return this.mutate((d) => {
+      d.goals.push(goal)
+    }, today).then((result) => ({ goal, goals: result.goals.length }))
+  }
+
+  updateGoal(id, patch, today = localDateStr()) {
+    return this.mutate((d) => {
+      const g = d.goals.find((x) => x.id === id)
+      if (g === undefined) throw new Error('找不到该目标: ' + id)
+
+      if (typeof patch.title === 'string') {
+        const t = patch.title.trim()
+        if (t === '') throw new Error('目标标题不能为空')
+        g.title = t
+      }
+      if (GOAL_HORIZONS.includes(patch.horizon)) g.horizon = patch.horizon
+      if (GOAL_STATUSES.includes(patch.status)) g.status = patch.status
+
+      for (const key of ['startDate', 'endDate']) {
+        if (typeof patch[key] === 'string' && patch[key] !== '') {
+          const v = parseDateStr(patch[key])
+          if (v === '') throw new Error('无效日期(需要真实的 YYYY-MM-DD): ' + patch[key])
+          g[key] = v
+        }
+      }
+      if (typeof g.startDate === 'string' && typeof g.endDate === 'string' &&
+          g.startDate !== '' && g.endDate !== '' && g.endDate < g.startDate) {
+        throw new Error('结束日期不能早于开始日期: ' + g.startDate + ' ~ ' + g.endDate)
+      }
+
+      if (patch.metric !== null && typeof patch.metric === 'object') {
+        const pm = patch.metric
+        if (GOAL_METRIC_TYPES.includes(pm.type)) g.metric.type = pm.type
+        if (pm.target !== undefined) {
+          const t = Number(pm.target)
+          if (Number.isFinite(t) && t > 0) g.metric.target = t
+        }
+        if (g.metric.type === 'milestone') g.metric.target = 1
+        if (pm.current !== undefined) {
+          const cur = Number(pm.current)
+          if (Number.isFinite(cur)) g.metric.current = Math.max(0, Math.min(g.metric.target, cur))
+        }
+        if (typeof pm.unit === 'string') g.metric.unit = pm.unit
+      }
+      // 允许直接平铺传 current / target(工具层更省事)
+      if (patch.current !== undefined) {
+        const cur = Number(patch.current)
+        if (Number.isFinite(cur)) g.metric.current = Math.max(0, Math.min(g.metric.target, cur))
+      }
+      if (typeof patch.note === 'string') g.note = patch.note
+      if (!Array.isArray(g.linkedSessions)) g.linkedSessions = []
+    }, today).then((result) => ({ ok: true, id, goals: result.goals.length }))
+  }
+
+  /** 删除目标,并把归属它的日程解除关联(避免留下悬空 goalId)。 */
+  removeGoal(id, today = localDateStr()) {
+    return this.mutate((d) => {
+      const idx = d.goals.findIndex((x) => x.id === id)
+      if (idx === -1) throw new Error('找不到该目标: ' + id)
+      d.goals.splice(idx, 1)
+      for (const it of d.items) {
+        if (it !== null && typeof it === 'object' && it.goalId === id) it.goalId = null
+      }
+    }, today).then((result) => {
+      const unlinked = result.items.filter((i) => i.goalId !== null && i.goalId !== undefined).length
+      return { ok: true, id, goals: result.goals.length, remainingLinked: unlinked }
+    })
+  }
+
+  /** 把某个日程归属到目标(goalId 传 null / '' 表示解除)。 */
+  linkGoal(id, goalId, today = localDateStr()) {
+    const gid = goalId === undefined || goalId === null ? '' : String(goalId).trim()
+    return this.mutate((d) => {
+      const item = d.items.find((i) => i.id === id)
+      if (item === undefined) throw new Error('找不到该日程: ' + id)
+      if (gid !== '') {
+        if (!d.goals.some((g) => g.id === gid)) throw new Error('找不到该目标: ' + gid)
+        item.goalId = gid
+      } else {
+        item.goalId = null
+      }
+    }, today).then((result) => ({ ok: true, id, goalId: gid === '' ? null : gid }))
+  }
+
+  /** 目标列表(可按 status 过滤),附带进度与关联日程。 */
+  async listGoals(status, today = localDateStr()) {
+    await this.reconcile(today)
+    const d = await this.load()
+    const filter = GOAL_STATUSES.includes(status) ? status : null
+    const items = filter === null ? d.goals : d.goals.filter((g) => g.status === filter)
+    return items.map((g) => ({
+      ...g,
+      progress: goalProgress(g, d, today),
+      items: d.items
+        .filter((i) => i !== null && typeof i === 'object' && i.goalId === g.id)
+        .map((i) => ({ id: i.id, title: i.title, date: i.date, recurring: i.recurring, quadrant: i.quadrant })),
+    }))
   }
 
   linkSession(id, sessionId, link = true, today = localDateStr()) {

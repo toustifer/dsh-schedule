@@ -1022,6 +1022,100 @@ function timeRulerToMinutes(targetItemOrItems, targetMinutes, options = {}) {
   })
 }
 
+// ==================== 目标层(Goal)纯逻辑 ====================
+
+/** horizon → 展示元数据(圆点 + 主题色 + 中文标签)。 */
+const GOAL_HORIZON_META = {
+  term:   { label: '学期', dot: '🎓', color: '#0969da' },
+  year:   { label: '学年', dot: '📅', color: '#8250df' },
+  custom: { label: '自定义', dot: '🎯', color: '#1a7f37' },
+}
+
+/** metric.type → 中文单位说明。 */
+const GOAL_METRIC_LABEL = {
+  score: '数值', count: '计数', percent: '百分比', milestone: '里程碑',
+}
+
+/** 形状校验 YYYY-MM-DD(不用正则:避免任何转义层带来的意外)。 */
+function isDateStr(s) {
+  if (typeof s !== 'string' || s.length !== 10) return false
+  if (s[4] !== '-' || s[7] !== '-') return false
+  for (let i = 0; i < 10; i++) {
+    if (i === 4 || i === 7) continue
+    const ch = s.charCodeAt(i)
+    if (ch < 48 || ch > 57) return false
+  }
+  return true
+}
+
+function goalHorizonMeta(h) {
+  return GOAL_HORIZON_META[h] || GOAL_HORIZON_META.custom
+}
+
+/**
+ * 计算目标进度。与 store.js 的 goalProgress 保持同一语义:
+ * 优先用手动 metric.current;当其为 0 且挂了日程时,退化为「关联日程完成率」
+ * 推导(derived = true,仅展示不写回)。
+ */
+function goalProgressOf(goal, data, today = todayStr()) {
+  const empty = { current: 0, target: 1, percent: 0, remainingDays: 0, linkedTotal: 0, linkedDone: 0, derived: false }
+  if (goal === null || goal === undefined || typeof goal !== 'object') return empty
+
+  const m = goal.metric !== null && typeof goal.metric === 'object' ? goal.metric : {}
+  const targetNum = Number(m.target)
+  const target = isFinite(targetNum) && targetNum > 0 ? targetNum : 1
+  let current = Number(m.current)
+  if (!isFinite(current) || current < 0) current = 0
+  if (current > target) current = target
+
+  let linkedTotal = 0
+  let linkedDone = 0
+  if (data !== null && data !== undefined && Array.isArray(data.items)) {
+    const doneMap = data.done && typeof data.done === 'object' ? data.done : {}
+    for (let i = 0; i < data.items.length; i++) {
+      const it = data.items[i]
+      if (it === null || typeof it !== 'object' || it.goalId !== goal.id) continue
+      linkedTotal += 1
+      const rec = doneMap[it.id]
+      if (rec !== undefined && Object.keys(rec).length > 0) linkedDone += 1
+    }
+  }
+
+  let remainingDays = 0
+  if (isDateStr(goal.endDate)) {
+    const end = Date.parse(goal.endDate + 'T00:00:00Z')
+    const now = Date.parse(today + 'T00:00:00Z')
+    if (isFinite(end) && isFinite(now)) remainingDays = Math.max(0, Math.round((end - now) / 86400000))
+  }
+
+  const derived = current === 0 && linkedTotal > 0
+  const effCurrent = derived ? linkedDone : current
+  const percent = Math.max(0, Math.min(100, Math.round((effCurrent / target) * 100)))
+
+  return { current: effCurrent, target, percent, remainingDays, linkedTotal, linkedDone, derived }
+}
+
+/** 进度条 / 数值的展示文案,如 "70% · 420/600 分" 或 "3/5 套"。 */
+function formatGoalMetric(goal, prog) {
+  if (goal === null || typeof goal !== 'object' || prog === null || prog === undefined) return ''
+  const m = goal.metric !== null && typeof goal.metric === 'object' ? goal.metric : {}
+  const unit = typeof m.unit === 'string' ? m.unit : ''
+  if (m.type === 'milestone') return prog.percent >= 100 ? '已达成' : '未达成'
+  if (m.type === 'percent') return prog.percent + '%'
+  return prog.current + '/' + prog.target + (unit === '' ? '' : ' ' + unit)
+}
+
+/** 目标状态 → 展示文案与配色。 */
+const GOAL_STATUS_META = {
+  active:  { label: '进行中', color: '#1a7f37' },
+  done:    { label: '已达成', color: '#0969da' },
+  dropped: { label: '已放弃', color: 'rgba(127,127,127,.8)' },
+}
+
+function goalStatusMeta(s) {
+  return GOAL_STATUS_META[s] || GOAL_STATUS_META.active
+}
+
 if (typeof window === 'undefined' && typeof module !== 'undefined' && module.exports !== undefined) {
   module.exports = {
     pad, fmt, todayStr, dateOf, isoDay, addDays, mondayOf, WEEKDAY_NAMES,
@@ -1030,5 +1124,7 @@ if (typeof window === 'undefined' && typeof module !== 'undefined' && module.exp
     getCurrentMinutes, getOverdueMinutes, formatOverdueText, injectNowNode,
     calculateQuickAdjust, calculateCardMove, computeDropTime,
     timeRulerShift, timeRulerToMinutes,
+    goalProgressOf, formatGoalMetric, goalHorizonMeta, goalStatusMeta,
+    GOAL_HORIZON_META, GOAL_METRIC_LABEL, GOAL_STATUS_META,
   }
 }
