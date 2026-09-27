@@ -205,6 +205,23 @@ test('goals bar is a news-ticker marquee: seamless loop, manual scroll, pause on
   assert.ok(code.includes('dsh-sched-goals-empty'), '无目标时应显示引导入口')
 })
 
+// ---------- 构建产物自身的完好性 ----------
+
+test('CSS 常量始终是单行字符串 —— 一行内的换行会直接截断 JS 语法', () => {
+  const code = bundle()
+  const lines = code.split('\n')
+  const i = lines.findIndex((l) => l.startsWith('const CSS = '))
+  assert.ok(i >= 0, 'bundle 应包含 const CSS')
+
+  const line = lines[i]
+  assert.ok(line.length > 10000, 'CSS 常量应在同一行内,而不是被拆成多行')
+  // 行尾必须是闭合引号(构建产物可能再续一个 + 或 ;),否则字符串没结束
+  assert.ok(/'\s*[+;,]?\s*$/.test(line), 'CSS 常量行应以闭合引号收尾')
+  // 续行残留会把 CSS 规则泄到字符串外,同时让 JS 解析失败
+  assert.ok(!/^\.dsh-sched-[a-z-]+\{/.test(lines[i + 1] || ''),
+    'CSS 常量之后不应出现游离的样式规则行')
+})
+
 // ---------- 目标归属闭环(新建即挂 + 空转提醒) ----------
 
 test('新建日程时可直接挂上长期目标,并给出未归属提示', () => {
