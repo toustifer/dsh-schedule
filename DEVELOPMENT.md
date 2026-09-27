@@ -150,11 +150,48 @@ reseat():  scrollLeft ∈ [w, 2w)
 
 **视觉**：滚动条隐藏（`scrollbar-width: none` + `::-webkit-scrollbar{display:none}`），跑马灯态加两端渐隐遮罩（`mask-image: linear-gradient(...)`）—— 遮罩作用在轨道盒上而不是滚动内容上，所以渐隐固定在条的两端。
 
-### 6. 一次性任务惰性自动顺延（Carry-Over）
+### 6. 给 AI 的通用内容修改接口
+
+十一个「一次改一条」的工具之外，另给三个通用入口：`dailytask_batch`、`dailytask_doc_get`、`dailytask_doc_patch`。
+
+**① batch 复用单条校验，不另写一套。**
+
+`applyOne()` 是个 switch 派发表，直接转发到 `addItem` / `updateItem` / `setDone` / … 既有的领域方法。这样校验、规范化、顺延、归属检查**只有一份实现**，批量路径不可能和单条路径产生行为差异。测试里专门断言了这点：空标题、`2026-02-30`、不存在的 goal id 在批量里同样被拒。
+
+**② 原子性靠"文件快照 + 丢弃内存副本"，而不是把九个方法重构成纯函数。**
+
+```
+batch(ops, atomic = true):
+  快照 = 读文件原文
+  逐条 await applyOne(op)
+  失败时(atomic):
+    写回快照          ← 磁盘回滚
+    loaded = false    ← 丢弃内存副本,下次访问重新读盘,拿回回滚后的状态
+    data = { items: [], done: {}, goals: [] }
+```
+
+重构成"可作用于 draft 的纯函数"能得到同样的语义，但要动九个方法、且容易漏掉顺延这类跨条目副作用。快照回滚只多一次读，性价比高得多。
+
+**③ 扩展字段的读写：`KNOWN_TOP_KEYS` 是唯一的分界线。**
+
+- 已知字段（`items` / `done` / `goals` / `version` / `writtenBy`）→ 只能走各自的专用工具，`docPatch` 一律拒绝。理由：这条通道是自由格式的，放进去就绕过了所有校验，还会和内存里的权威副本打架。
+- 扩展字段 → `docPatch` 自由读写，且被 `serializeForDisk` 原样保留。
+
+**④ 墓碑机制：`removedKeys`。**
+
+这里踩了一个自相矛盾的坑，值得记下来：
+
+`serializeForDisk` 为了让别的进程写进来的未知字段不被抹掉，规则是「磁盘上的未知字段优先保留」（issue #2）。但这条规则和 `docPatch` 的 `unset` **直接冲突** —— 删掉 `tags` 之后写盘，又会从磁盘把 `tags` 搬回来，删除等于没生效。
+
+修法是记墓碑：`this.removedKeys: Set<string>`，区分「我们没见过这个字段」和「我们明确删掉了这个字段」。`serializeForDisk` 跳过墓碑里的键；`set` 时撤销墓碑；因为墓碑表达的是**相对最近一次读盘**的删除，所以 `load()` 真正读盘时归零，批次回滚时也归零（文件已还原，不存在"已删除"这回事）。
+
+这个 bug 是被 `test/api.test.mjs` 里那句 `assert.equal(readDoc(path).tags, undefined)` 抓出来的 —— 写测试时没预料到，但它正好落在两条规则的交叉点上。
+
+### 7. 一次性任务惰性自动顺延（Carry-Over）
 
 未完成的一次性日程（`recurring: 'once'` 且 `carryOver: true`）采用**读写时惰性计算**，无需常驻定时器：任何 `listForDate` / `snapshot` / 写入都会触发检测，把生效日期推进到 `today`，同时把历经的每一天写进 `rolloverDates`，让月历仍能追溯。
 
-### 7. 数据模型（`version: 2`）
+### 8. 数据模型（`version: 2`）
 
 ```json
 {
@@ -220,10 +257,13 @@ reseat():  scrollLeft ∈ [w, 2w)
 | 目标 | `dailytask_goal_update` | 推进度 / 改状态 / 改跨度（`metric_current` 自动夹在 `0~target`） |
 | 目标 | `dailytask_goal_delete` | 删除目标并解除日程归属 |
 | 目标 | `dailytask_link_goal` | 把日程归属到目标（传空串 = 解除） |
+| 通用 | `dailytask_batch` | 批量执行 10 种 op,可原子回滚 |
+| 通用 | `dailytask_doc_get` | 读顶层字段(省略 keys 则返回全部扩展字段) |
+| 通用 | `dailytask_doc_patch` | 写/删扩展字段(内置字段一律拒绝) |
 
 工具入参统一是 `snake_case`，`goalArgsFrom()` 负责映射到 store 的 `camelCase`。
 
-**HTTP 数据面**（浏览器面板用）：`/get` `/add` `/update` `/remove` `/setDone` `/set-done` `/link-session` `/goal-add` `/goal-list` `/goal-update` `/goal-remove` `/link-goal`
+**HTTP 数据面**（浏览器面板用）：`/get` `/add` `/update` `/remove` `/setDone` `/set-done` `/link-session` `/goal-add` `/goal-list` `/goal-update` `/goal-remove` `/link-goal` `/batch` `/doc-get` `/doc-patch`
 
 > `/setDone` 与 `/set-done` 是同一个处理器的两个别名 —— 历史上前端曾用驼峰调用而宿主只注册了连字符版本，导致四象限打勾静默 404。保留别名以免回归。
 
@@ -240,7 +280,7 @@ node scripts/build.mjs        # → lib/index.js, lib/store.js, lib/client.js
 ### 2. 测试
 
 ```bash
-node --test test/*.test.mjs   # 76 个用例
+node --test test/*.test.mjs   # 95 个用例
 ```
 
 | 文件 | 覆盖 |
@@ -248,7 +288,9 @@ node --test test/*.test.mjs   # 76 个用例
 | `test/store.test.mjs` | 存储核心：字段归一化、顺延算法、损坏自愈、边界日期 |
 | `test/client-logic.test.mjs` | 客户端纯逻辑：日期运算、排序、时间块解析、冲突检测 |
 | `test/bundle.test.mjs` | **构建产物契约**：时间轴网格 / 吸附 / 稳定视口 / 三种排期入口、目标层 UI 与显隐持久化 |
-| `test/goals.test.mjs` | 目标层：模型校验、CRUD、归属与解除、进度算法、旧数据兼容、**宿主 11 工具 + 5 路由契约** |
+| `test/goals.test.mjs` | 目标层：模型校验、CRUD、归属与解除、进度算法、旧数据兼容、宿主工具与路由契约 |
+| `test/persistence.test.mjs` | 持久化契约：未知顶层字段不丢、多进程写入不互相覆盖、writtenBy/version 标记、`__proto__` 防护 |
+| `test/api.test.mjs` | 通用接口：batch 派发与原子回滚、扩展字段读写、墓碑语义、宿主 14 工具契约 |
 
 > **写 `bundle.test.mjs` 的两个坑：**
 > 1. CSS 全部集中在文件顶部的 `const CSS`，**不在各组件区段内** —— 样式断言要用整个 bundle 匹配，只有逻辑断言才用 `timelineSection()` 切区段。

@@ -37,6 +37,41 @@ export const GOAL_METRIC_TYPES = ['score', 'count', 'percent', 'milestone']
 /** 目标状态:进行中 / 已达成 / 已放弃 */
 export const GOAL_STATUSES = ['active', 'done', 'dropped']
 
+// ---- 数据文件元信息 ----
+
+/**
+ * 数据格式代次。1 = 无 goals 层,2 = 含 goals 层。
+ * 注意这是**数据模型**版本,不是写入方代码版本 —— 写入方是谁看 writtenBy。
+ */
+export const DATA_FORMAT_VERSION = 2
+
+/**
+ * 写入方标识。写进数据文件,便于事后判断"是谁把这个文件写坏的" ——
+ * 同机多进程 / 多版本 / 云同步共存时,这是唯一能事后归因的线索。
+ * 必须与 package.json 的 version 一致(test/goals.test.mjs 有断言守着)。
+ */
+export const DATA_WRITER = 'dsh-schedule@0.4.0'
+
+/**
+ * 本版本认识的顶层字段。其余字段一律**原样保留**,绝不按白名单重构整个文档
+ * —— 否则"持有旧代码的进程写一次盘就会静默抹掉新字段"(issue #2)。
+ */
+export const KNOWN_TOP_KEYS = ['version', 'writtenBy', 'items', 'done', 'goals']
+
+/**
+ * 拷贝对象的自有可枚举键,但剔除 `__proto__`。
+ * 数据文件里若含 `"__proto__"`,用赋值方式合并它会走原型 setter 构成原型污染;
+ * 必须用逐键赋值 + 显式跳过,而不是展开运算符之外的任何"顺手"写法。
+ */
+function copySafeEntries(obj) {
+  const out = {}
+  for (const k of Object.keys(obj)) {
+    if (k === '__proto__') continue
+    out[k] = obj[k]
+  }
+  return out
+}
+
 export function parseTimeFields(inputTime, inputStartTime, inputEndTime) {
   let startTime = ''
   let endTime = ''
@@ -374,6 +409,16 @@ export class ScheduleStore {
     this.path = opts.path || DEFAULT_DATA_PATH
     this.legacyPath = opts.legacyPath !== undefined ? opts.legacyPath : LEGACY_DATA_PATH
     this.data = { items: [], done: {}, goals: [] }
+    /**
+     * 本进程显式删除过的扩展字段名。
+     *
+     * 为什么需要它:serializeForDisk 会让"磁盘上的未知字段"优先保留(issue #2),
+     * 否则另一个进程写进来的字段会被抹掉。但这条规则和 docPatch 的 unset 直接冲突 ——
+     * 删掉 tags 之后,写盘时又会从磁盘把 tags 搬回来,删除等于没生效。
+     * 墓碑就是用来区分「我们没见过这个字段」和「我们明确删掉了这个字段」。
+     * 它只代表"相对于最近一次读盘"的删除,所以每次真正读盘后归零。
+     */
+    this.removedKeys = new Set()
     this.loaded = false
     this.protectUnparsedFile = false
     this.writeChain = Promise.resolve()
@@ -381,6 +426,8 @@ export class ScheduleStore {
 
   async load() {
     if (this.loaded) return this.data
+    // 墓碑是"相对最近一次读盘"的增量,一旦重新读盘就不再有效
+    this.removedKeys = new Set()
     try {
       let source = null
       try {
@@ -405,7 +452,10 @@ export class ScheduleStore {
           return this.data
         }
         if (parsed !== null && typeof parsed === 'object' && Array.isArray(parsed.items)) {
+          // 以**原文为基底**展开:任何本版本不认识的顶层字段都原样带在内存里,
+          // 后续写盘时一并带走。绝不用白名单重新构造整个文档(issue #2)。
           this.data = {
+            ...copySafeEntries(parsed),
             items: parsed.items
               .filter((item) => item !== null && typeof item === 'object')
               .map(normalizeStoredItem),
@@ -415,6 +465,16 @@ export class ScheduleStore {
               ? parsed.goals.filter((g) => g !== null && typeof g === 'object').map(normalizeStoredGoal)
               : [],
           }
+          // 可观测性:一次性记清"这份文件是谁写的",并提示我们不认识的字段(它们会被保留而非丢弃)
+          const unknownKeys = Object.keys(parsed).filter((k) => KNOWN_TOP_KEYS.indexOf(k) === -1)
+          const writer = typeof parsed.writtenBy === 'string' ? parsed.writtenBy : '(未记录)'
+          console.log(
+            '[dsh-schedule] 数据文件 writer=' + writer
+            + ' format=' + (parsed.version === undefined ? '?' : parsed.version)
+            + ' items=' + this.data.items.length
+            + ' goals=' + this.data.goals.length
+            + (unknownKeys.length > 0 ? ' | 未知顶层字段(将原样保留): ' + unknownKeys.join(', ') : '')
+          )
         } else {
           // 结构不对同样按损坏处理 —— 否则空数据会在下一次保存时覆盖原文件
           await this.backupCorrupt(source, text, new Error('数据文件结构不符合预期(items 不是数组)'))
@@ -425,7 +485,7 @@ export class ScheduleStore {
         if (source === this.legacyPath) {
           try {
             await fsp.mkdir(join(this.path, '..'), { recursive: true })
-            await fsp.writeFile(this.path, JSON.stringify({ version: 2, items: this.data.items, done: this.data.done, goals: this.data.goals }, null, 2), 'utf8')
+            await fsp.writeFile(this.path, JSON.stringify(await this.serializeForDisk(), null, 2), 'utf8')
             await fsp.rm(this.legacyPath, { force: true })
           } catch (err) {
             console.error('[dsh-schedule] legacy data migration failed', err)
@@ -459,6 +519,43 @@ export class ScheduleStore {
     }
   }
 
+  /**
+   * 组装要落盘的完整文档 —— issue #2 的核心修复。
+   *
+   * 规则只有两条,好处是可预测:
+   *   - 本版本**认识**的字段(items / done / goals / version / writtenBy)以内存为准;
+   *   - 本版本**不认识**的顶层字段,一律取磁盘上的最新值填进输出。
+   *
+   * 为什么要读盘:Store 是"内存持有 + 全量覆写"模型,同机可能存在另一个进程
+   * (旧版插件 / 手工编辑 / 云同步)往文件里塞了我们不认识的字段。不先读盘就直接
+   * 覆盖,这些字段会被静默抹掉 —— 那正是被报告的数据丢失。
+   *
+   * 读不到 / 解析失败都不影响写盘:我们自己的数据仍然要落盘,只是带上不带未知字段。
+   */
+  async serializeForDisk() {
+    const out = copySafeEntries(this.data)
+    let disk = null
+    try {
+      const text = await fsp.readFile(this.path, 'utf8')
+      const parsed = JSON.parse(text)
+      if (parsed !== null && typeof parsed === 'object' && !Array.isArray(parsed)) disk = parsed
+    } catch (err) {
+      disk = null
+    }
+    if (disk !== null) {
+      const safe = copySafeEntries(disk)
+      for (const k of Object.keys(safe)) {
+        if (KNOWN_TOP_KEYS.indexOf(k) !== -1) continue
+        // 本进程显式删除过的字段不许从磁盘复活,否则 unset 等于没生效
+        if (this.removedKeys.has(k)) continue
+        out[k] = safe[k]
+      }
+    }
+    out.version = DATA_FORMAT_VERSION
+    out.writtenBy = DATA_WRITER
+    return out
+  }
+
   async save() {
     if (this.protectUnparsedFile === true) {
       console.error('[dsh-schedule] 写盘已暂停(数据文件未解析且备份失败),本次变更仅保留在内存')
@@ -466,7 +563,8 @@ export class ScheduleStore {
     }
     await fsp.mkdir(join(this.path, '..'), { recursive: true })
     const tmp = this.path + '.tmp'
-    await fsp.writeFile(tmp, JSON.stringify({ version: 2, items: this.data.items, done: this.data.done, goals: this.data.goals }, null, 2), 'utf8')
+    const doc = await this.serializeForDisk()
+    await fsp.writeFile(tmp, JSON.stringify(doc, null, 2), 'utf8')
     await fsp.rename(tmp, this.path)
   }
 
@@ -726,6 +824,174 @@ export class ScheduleStore {
         .filter((i) => i !== null && typeof i === 'object' && i.goalId === g.id)
         .map((i) => ({ id: i.id, title: i.title, date: i.date, recurring: i.recurring, quadrant: i.quadrant })),
     }))
+  }
+
+  // ==================== 给 AI 的内容修改接口 ====================
+
+  /**
+   * 把一条批量操作派发到对应的领域方法。
+   *
+   * 刻意**复用既有方法**而不是另写一套逻辑 —— 校验、规范化、顺延、
+   * 归属检查全都只有一份实现,批量路径不可能和单条路径产生行为差异。
+   */
+  async applyOne(op, today = localDateStr()) {
+    if (op === null || typeof op !== 'object' || typeof op.op !== 'string') {
+      throw new Error('每条操作必须是形如 { op: "...", ... } 的对象')
+    }
+    const needId = (label) => {
+      if (typeof op.id !== 'string' || op.id === '') throw new Error(label + ' 需要 id')
+    }
+    switch (op.op) {
+      case 'add':
+        return this.addItem(op, Date.now(), today)
+      case 'update':
+        needId('update')
+        return this.updateItem(op.id, op, today)
+      case 'set_done':
+        needId('set_done')
+        return this.setDone(op.id, op.date, op.done !== false, today)
+      case 'remove':
+        needId('remove')
+        return this.removeItem(op.id, today)
+      case 'link_session': {
+        needId('link_session')
+        const sid = op.session_id !== undefined ? op.session_id : op.sessionId
+        return this.linkSession(op.id, sid, op.link !== false, today)
+      }
+      case 'goal_add':
+        return this.addGoal(op, Date.now(), today)
+      case 'goal_update':
+        needId('goal_update')
+        return this.updateGoal(op.id, op, today)
+      case 'goal_remove':
+        needId('goal_remove')
+        return this.removeGoal(op.id, today)
+      case 'link_goal': {
+        needId('link_goal')
+        const gid = op.goal_id !== undefined ? op.goal_id : op.goalId
+        return this.linkGoal(op.id, gid === undefined ? '' : gid, today)
+      }
+      case 'doc_patch':
+        return this.docPatch(op, today)
+      default:
+        throw new Error('不认识的操作: ' + op.op
+          + '(可用: add / update / set_done / remove / link_session / goal_add / goal_update / goal_remove / link_goal / doc_patch)')
+    }
+  }
+
+  /**
+   * 批量修改。
+   *
+   * atomic = true(默认):任一项失败 → 磁盘与内存一起退回批次开始前,不留半成品。
+   * atomic = false:逐条应用,失败的记进 failures 继续往下走,拿到部分结果。
+   *
+   * 回滚手法是"先存原文快照,失败就写回 + 丢弃内存副本(loaded=false 让下次重新读盘)"。
+   * 这样不必把九个领域方法重构成可作用于 draft 的纯函数,却拿到同等的全或无语义。
+   */
+  async batch(ops, atomic = true, today = localDateStr()) {
+    if (!Array.isArray(ops) || ops.length === 0) throw new Error('ops 必须是非空数组')
+    if (ops.length > 200) throw new Error('一次最多 200 条操作(收到 ' + ops.length + ' 条)')
+
+    let snapshot = null
+    try {
+      snapshot = await fsp.readFile(this.path, 'utf8')
+    } catch (err) {
+      snapshot = null
+    }
+
+    const results = []
+    const failures = []
+
+    for (let i = 0; i < ops.length; i++) {
+      try {
+        results.push({ index: i, op: ops[i] !== null && typeof ops[i] === 'object' ? ops[i].op : undefined, result: await this.applyOne(ops[i], today) })
+      } catch (err) {
+        const msg = err !== null && err !== undefined && err.message ? err.message : String(err)
+        if (atomic) {
+          if (snapshot !== null) {
+            try {
+              await fsp.writeFile(this.path, snapshot, 'utf8')
+            } catch (writeErr) {
+              console.error('[dsh-schedule] 批次回滚写盘失败,内存副本已丢弃', writeErr)
+            }
+            // 丢掉内存副本:下次访问会重新读盘,拿回回滚后的状态
+            this.loaded = false
+            this.data = { items: [], done: {}, goals: [] }
+            this.removedKeys = new Set()
+          }
+          throw new Error('批次第 ' + (i + 1) + ' 项(' + String(ops[i] !== null && typeof ops[i] === 'object' ? ops[i].op : '?') + ')失败,已回滚整批: ' + msg)
+        }
+        failures.push({ index: i, op: ops[i] !== null && typeof ops[i] === 'object' ? ops[i].op : undefined, error: msg })
+      }
+    }
+
+    return { ok: failures.length === 0, applied: results.length, failed: failures.length, results, failures }
+  }
+
+  /** 本版本已知字段之外的扩展字段名(即"别的版本 / 别的工具"写进来的自有内容)。 */
+  async listExtensionKeys(today = localDateStr()) {
+    await this.reconcile(today)
+    const d = await this.load()
+    return Object.keys(d).filter((k) => KNOWN_TOP_KEYS.indexOf(k) === -1 && k !== '__proto__')
+  }
+
+  /**
+   * 读顶层字段。keys 省略时返回全部**扩展**字段。
+   * 已知字段也允许读(便于 AI 一次看清全局),但返回的是内存里的权威副本。
+   */
+  async readDoc(keys, today = localDateStr()) {
+    await this.reconcile(today)
+    const d = await this.load()
+    const extensionKeys = Object.keys(d).filter((k) => KNOWN_TOP_KEYS.indexOf(k) === -1 && k !== '__proto__')
+    const wanted = Array.isArray(keys) && keys.length > 0 ? keys : extensionKeys
+    const doc = {}
+    for (const k of wanted) {
+      if (typeof k !== 'string' || k === '' || k === '__proto__') continue
+      if (Object.prototype.hasOwnProperty.call(d, k)) doc[k] = d[k]
+    }
+    return { version: DATA_FORMAT_VERSION, writtenBy: DATA_WRITER, extensionKeys, doc }
+  }
+
+  /**
+   * 写**扩展**顶层字段 —— 这是 AI 往数据文件里放自有内容的正规通道
+   * (标签、视图偏好、统计缓存、外部系统 id 映射……)。
+   *
+   * 已知字段(version / writtenBy / items / done / goals)一律拒绝:它们有各自的
+   * 专用工具与完整校验,从这条自由通道写进去会绕过校验,并且和内存里的权威副本打架。
+   */
+  async docPatch(patch, today = localDateStr()) {
+    // 刻意 async:参数校验失败要以 rejected promise 的形式抛出,
+    // 与 batch / 其它领域方法一致 —— 调用方(工具层 / 批量层)统一用 await 处理。
+
+    const src = patch !== null && typeof patch === 'object' ? patch : {}
+    const set = src.set !== null && typeof src.set === 'object' && !Array.isArray(src.set) ? src.set : {}
+    const unset = Array.isArray(src.unset) ? src.unset : []
+    const setKeys = Object.keys(set).filter((k) => k !== '__proto__')
+
+    for (const k of Object.keys(set)) {
+      if (k === '__proto__') throw new Error('字段名 __proto__ 不被允许')
+      if (KNOWN_TOP_KEYS.indexOf(k) !== -1) {
+        throw new Error('字段 ' + k + ' 是本版本已知字段,请用它的专用工具修改,不能走 doc_patch')
+      }
+    }
+    for (const k of unset) {
+      if (typeof k !== 'string' || k === '') throw new Error('unset 的元素必须是非空字符串')
+      if (k === '__proto__') throw new Error('字段名 __proto__ 不被允许')
+      if (KNOWN_TOP_KEYS.indexOf(k) !== -1) throw new Error('字段 ' + k + ' 是已知字段,不能删除')
+    }
+    if (setKeys.length === 0 && unset.length === 0) throw new Error('需要提供 set 或 unset')
+
+    return this.mutate((d) => {
+      for (const k of setKeys) {
+        d[k] = set[k]
+        // 重新写入等于撤销之前的删除
+        this.removedKeys.delete(k)
+      }
+      for (const k of unset) {
+        delete d[k]
+        this.removedKeys.add(k)
+      }
+    }, today).then(() => ({ ok: true, set: setKeys, unset }))
   }
 
   linkSession(id, sessionId, link = true, today = localDateStr()) {

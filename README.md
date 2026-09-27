@@ -44,10 +44,57 @@ A local schedule + long-term-goal plugin for DeepSeek Harness: a native right-si
 
 ### Agent
 
-- 🤖 **11 个 agent 工具** — 任意对话里说一句就能操作：
+- 🤖 **14 个 agent 工具** — 任意对话里说一句就能操作：
   - 日程层：`dailytask_add` / `dailytask_list` / `dailytask_set_done` / `dailytask_update` / `dailytask_delete` / `dailytask_link_session`
   - 目标层：`dailytask_goal_add` / `dailytask_goal_list` / `dailytask_goal_update` / `dailytask_goal_delete` / `dailytask_link_goal`
+  - 通用层：`dailytask_batch`（批量）/ `dailytask_doc_get` / `dailytask_doc_patch`（读写扩展字段）
 - 💾 **长期本地存储** — `~/.dsh/dsh-schedule-data.json`，完成历史永不删除；自动迁移旧版数据文件；文件损坏时先备份为 `.corrupt-<时间戳>` 再以空数据启动，绝不覆盖原文。
+
+## 给 AI 的内容修改接口 AI Content API
+
+除了上面那些「一次改一条」的工具，还给了 AI 三个通用入口：
+
+### `dailytask_batch` —— 批量修改
+
+一次调用按顺序执行多条操作，不必来回十几轮：
+
+```jsonc
+{
+  "ops": [
+    { "op": "goal_add", "title": "大学英语四级 600 分", "horizon": "term",
+      "metric": { "type": "score", "target": 600, "unit": "分" } },
+    { "op": "add", "title": "背 30 个单词", "date": "2026-09-23",
+      "startTime": "08:00", "endTime": "08:30", "quadrant": "q2" },
+    { "op": "add", "title": "做一套真题", "date": "2026-09-23",
+      "startTime": "20:00", "endTime": "21:30", "quadrant": "q2" }
+  ],
+  "atomic": true
+}
+```
+
+可用 op：`add` / `update` / `set_done` / `remove` / `link_session` / `goal_add` / `goal_update` / `goal_remove` / `link_goal` / `doc_patch`。
+
+- `atomic: true`（默认）—— 任一项失败，**整批回滚**（磁盘与内存一起），不留半成品
+- `atomic: false` —— 跳过失败项继续，返回 `applied` / `failed` 与逐项错误
+- 批量路径**复用单条工具的同一套校验**，所以 `{ "op": "add", "title": "   " }` 在批量里同样会被拒
+
+### `dailytask_doc_get` / `dailytask_doc_patch` —— 读写扩展字段
+
+AI 想往这份数据里放自己的内容（标签、视图偏好、统计缓存、外部系统 id 映射……）就走这两个：
+
+```jsonc
+// doc_patch:浅合并写入,同名整体替换
+{ "set": { "tags": ["学期", "冲刺"], "external": { "notionId": "abc" } } }
+
+// unset:删掉字段
+{ "unset": ["tags"] }
+```
+
+- 写入的扩展字段会被存储层**原样保留**，不会被任何日程写操作顺手冲掉
+- **内置字段（`items` / `done` / `goals` / `version` / `writtenBy`）一律拒绝** —— 它们有各自的专用工具与完整校验，从这条自由通道写进去会绕过校验
+- `doc_get` 不给 `keys` 就返回全部扩展字段；内置字段也可读，便于一次看清全局
+
+对应 HTTP 路由：`/batch`、`/doc-get`、`/doc-patch`。
 
 ## 安装 Install
 

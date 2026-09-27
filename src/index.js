@@ -2,11 +2,13 @@
  * dsh-schedule — DeepSeek Harness 本地日程插件(Host 半身)。
  *
  * 提供:
- *   1. 十一个模型工具:
+ *   1. 十四个模型工具:
  *      日程层 —— dailytask_add / dailytask_list / dailytask_set_done /
  *                dailytask_update / dailytask_delete / dailytask_link_session
  *      目标层 —— dailytask_goal_add / dailytask_goal_list / dailytask_goal_update /
  *                dailytask_goal_delete / dailytask_link_goal
+ *      通用   —— dailytask_batch(批量) / dailytask_doc_get / dailytask_doc_patch
+ *                (后两个读写「扩展顶层字段」,即插件自留内容)
  *      —— 在任意对话里说"帮我记一条日程"或"帮我立个四级目标",即可由 AI
  *      直接操作同一份数据。
  *   2. /api/dailytask/* HTTP API —— 浏览器面板的数据面。
@@ -250,6 +252,55 @@ export function apply(ctx) {
     },
   ))
 
+  // ---- 通用内容修改接口 ----
+
+  ctx.tools.register(makeTool(
+    'dailytask_batch',
+    '批量修改日程与目标:一次调用里按顺序执行多条操作,不必逐条来回。ops 是操作数组,每项形如 { op: "...", ... }。'
+    + '可用 op:add(新建日程,字段同 dailytask_add) / update(改日程,需 id) / set_done(打勾,需 id,可带 date) / '
+    + 'remove(删日程,需 id) / link_session(需 id) / goal_add(新建目标,字段同 dailytask_goal_add) / '
+    + 'goal_update(需 id) / goal_remove(需 id) / link_goal(需 id,可带 goal_id) / doc_patch(改扩展字段)。'
+    + 'atomic 默认 true:任一项失败则整批回滚(磁盘与内存一起),不留半成品;设为 false 则跳过失败项、返回部分结果。'
+    + '需要 id 的操作请先用 dailytask_list / dailytask_goal_list 取。',
+    {
+      ops: { type: 'array', required: true, description: '操作数组,每项含 op 与对应参数;一次最多 200 条' },
+      atomic: { type: 'boolean', description: '默认 true:任一失败即整批回滚;false:跳过失败项继续' },
+    },
+    async (args) => {
+      if (args === null || typeof args !== 'object') throw new Error('参数无效')
+      if (!Array.isArray(args.ops)) throw new Error('ops 必须是数组')
+      return store.batch(args.ops, args.atomic !== false)
+    },
+  ))
+
+  ctx.tools.register(makeTool(
+    'dailytask_doc_get',
+    '读取数据文件的顶层字段。keys 省略时返回全部「扩展字段」—— 即本插件内置字段之外、由其它版本或其它工具写入的自有内容(插件设置、标签、统计缓存等)。'
+    + '内置字段(items / done / goals / version / writtenBy)也可以读,便于一次看清全局。',
+    {
+      keys: { type: 'array', description: '要读取的顶层字段名数组;省略则返回全部扩展字段' },
+    },
+    async (args) => {
+      const keys = args !== null && typeof args === 'object' ? args.keys : undefined
+      return store.readDoc(keys)
+    },
+  ))
+
+  ctx.tools.register(makeTool(
+    'dailytask_doc_patch',
+    '写入数据文件的**扩展**顶层字段 —— AI 往这里放自有内容的正规通道(比如给日程体系加一套标签、存视图偏好、缓存统计结果)。'
+    + 'set 是要写入的字段(浅合并,同名整体替换),unset 是要删除的字段名数组。'
+    + '注意:内置字段 items / done / goals / version / writtenBy 一律拒绝,它们有各自的专用工具与完整校验。写入的扩展字段会被存储层原样保留。',
+    {
+      set: { type: 'object', description: '要写入的扩展字段,如 {"tags": ["学期","冲刺"]}' },
+      unset: { type: 'array', description: '要删除的扩展字段名数组' },
+    },
+    async (args) => {
+      if (args === null || typeof args !== 'object') throw new Error('参数无效')
+      return store.docPatch(args)
+    },
+  ))
+
   // ---- HTTP API(浏览器面板数据面;webServer 可选,无 UI 场景不阻塞) ----
   ctx.inject(['webServer'], (serverCtx) => {
     const json = (res, body, status = 200) => {
@@ -364,6 +415,23 @@ export function apply(ctx) {
       const gid = body.goalId !== undefined ? body.goalId : body.goal_id
       await store.linkGoal(body.id, gid === undefined ? '' : gid)
       json(res, await store.snapshot())
+    })
+
+    // ---- 通用内容修改接口 ----
+    route('/batch', async (req, res) => {
+      const body = await readBody(req)
+      if (!Array.isArray(body.ops)) throw new Error('ops 必须是数组')
+      json(res, await store.batch(body.ops, body.atomic !== false))
+    })
+
+    route('/doc-get', async (req, res) => {
+      const body = await readBody(req)
+      json(res, await store.readDoc(body !== null && typeof body === 'object' ? body.keys : undefined))
+    })
+
+    route('/doc-patch', async (req, res) => {
+      const body = await readBody(req)
+      json(res, await store.docPatch(body))
     })
   })
 
