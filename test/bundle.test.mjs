@@ -148,3 +148,59 @@ test('built client bundle implements the goals layer UI', () => {
   assert.ok(code.includes('goalProgressOf'), '应复用 goalProgressOf 计算进度')
   assert.ok(code.includes('formatGoalMetric'), '应复用 formatGoalMetric 渲染数值')
 })
+
+// ---------- 目标条跑马灯 ----------
+
+test('goals bar is a news-ticker marquee: seamless loop, manual scroll, pause on hover', () => {
+  const code = bundle()
+
+  // 1) 结构:轨道 + 可重复的序列
+  assert.ok(code.includes('.dsh-sched-goals-track'), 'CSS 应包含轨道样式')
+  assert.ok(code.includes('.dsh-sched-goals-seq'), 'CSS 应包含序列样式')
+  assert.ok(code.includes('dsh-sched-goals-seq'), 'DOM 应渲染序列节点')
+
+  // 2) 轨道自身滚动 + 隐藏滚动条(新闻条不该露滚动条)
+  assert.ok(/.dsh-sched-goals-track\{[^}]*overflow-x:auto/.test(code), '轨道应可横向滚动')
+  assert.ok(code.includes('scrollbar-width:none'), '应隐藏标准滚动条')
+  assert.ok(code.includes('.dsh-sched-goals-track::-webkit-scrollbar{display:none;}'),
+    '应隐藏 webkit 滚动条')
+
+  // 3) 只在溢出时才启动跑马灯 + 两端渐隐遮罩
+  assert.ok(code.includes('.dsh-sched-goals-track.marquee'), '跑马灯态应有独立样式')
+  assert.ok(code.includes('mask-image:linear-gradient'), '应有两端渐隐遮罩')
+  assert.ok(code.includes('ResizeObserver'), '应用 ResizeObserver 测量是否溢出')
+  assert.ok(code.includes('w > track.clientWidth + 2'), '应以「序列宽 > 视口宽」判定溢出')
+
+  // 4) 自动推进
+  assert.ok(code.includes('GOALS_MARQUEE_SPEED'), '应有跑马灯速度常量')
+  assert.ok(code.includes('requestAnimationFrame(tick)'), '应用 rAF 匀速推进')
+  assert.ok(code.includes('track.scrollLeft += step'), '应推进 scrollLeft')
+  assert.ok(code.includes('matchMedia') && code.includes('prefers-reduced-motion'),
+    '应尊重 prefers-reduced-motion')
+
+  // 5) 无缝循环:三份拷贝 + 收回中间窗口
+  assert.ok(code.includes('w * 2'), '应按序列宽计算循环边界')
+  assert.ok(/if \(s < w\) next = s \+ w/.test(code), '越过左边界应 +w 回绕')
+  assert.ok(/else if \(s >= w \* 2\) next = s - w/.test(code), '越过右边界应 -w 回绕')
+  assert.ok(code.includes('reseatingRef'), '回绕赋值应加锁,避免 onScroll 递归')
+  assert.ok(code.includes("renderSeq('s1-')") && code.includes("renderSeq('s2-')"),
+    '跑马灯态应渲染第二、三份拷贝')
+  assert.ok(code.includes("'aria-hidden': 'true'"), '重复拷贝应对读屏隐藏')
+
+  // 6) 手动划动:指针拖拽 + 抖动阈值 + 拖后不误触点击
+  assert.ok(code.includes('GOALS_DRAG_SLOP'), '应有拖拽抖动阈值')
+  assert.ok(code.includes('setPointerCapture'), '拖拽应捕获指针')
+  assert.ok(code.includes('track.scrollLeft = d.left - dx'), '拖拽应跟手滚动')
+  assert.ok(code.includes('suppressClickRef'), '拖拽后应抑制误触发的点击')
+  assert.ok(code.includes('onPointerMove: onPointerMove'), '应监听指针移动')
+  assert.ok(code.includes('onPointerCancel: onPointerUp'), '应监听指针取消')
+  assert.ok(code.includes('touch-action:pan-y'), '应放行纵向滚动、自行处理横向')
+
+  // 7) 悬停/拖拽时暂停
+  assert.ok(code.includes('if (!marquee || hovering || dragging) return undefined'),
+    '悬停或拖拽时应暂停自动推进')
+  assert.ok(code.includes('setHovering(true)'), '应跟踪悬停态')
+
+  // 8) 空态仍可用
+  assert.ok(code.includes('dsh-sched-goals-empty'), '无目标时应显示引导入口')
+})

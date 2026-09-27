@@ -118,11 +118,43 @@ status  : active(进行中) | done(已达成) | dropped(已放弃)
 
 **删除安全性**：`removeGoal` 只删目标并把归属日程的 `goalId` 置 `null`，**绝不连带删除日程**。UI 上是二次确认按钮。
 
-### 5. 一次性任务惰性自动顺延（Carry-Over）
+### 5. 目标条跑马灯（News-ticker Marquee）
+
+目标条要做成「新闻滚动条」：自动循环滚动，同时允许用户手动划动。三个要点：
+
+**① 只在内容溢出时启动。** 目标少的时候静止排列 —— 一条目标在空荡荡的条里来回滚很傻。用 `ResizeObserver` 量 `seq.offsetWidth > track.clientWidth` 来决定。
+
+**② 三份拷贝 + 视口锚在中间份 = 双向无限。** 这是整个循环的关键：
+
+```
+[ seq ][ seq ][ seq ]      内容周期 = w（一份序列宽）
+        ^^^^              视口初始锚在第二份起点（scrollLeft = w）
+
+reseat():  scrollLeft ∈ [w, 2w)
+           s <  w      →  s + w
+           s >= 2w     →  s - w
+```
+
+因为内容周期为 `w`，加减一个 `w` **视觉上完全等价**，所以这个"回绕"用户看不出来。只复制 2 份的话左边界会撞到 `scrollLeft = 0` 而卡住，必须 3 份才有左右各一份的缓冲。
+
+注意 `reseat` 要加锁（`reseatingRef` + 下一帧解锁）—— 给 `scrollLeft` 赋值会**异步再派发一次 `scroll` 事件**，不锁就会递归。
+
+**③ 手动划动三种输入都要接。** `overflow-x: auto` 负责滚轮/触控板，指针拖拽单独实现：
+
+- 抖动阈值 `GOALS_DRAG_SLOP = 4px`：小于它一律当点击，**不抢走 chip 的 onClick**；
+- 超过阈值才 `setPointerCapture` 并跟手 `scrollLeft = d.left - dx`；
+- 拖过之后置 `suppressClickRef`，并让 chip 的 `openChip` 检查它 —— 否则"划完一下"会误开目标详情；
+- 容器设 `touch-action: pan-y`：纵向照常翻页，横向归我们处理。
+
+**暂停策略**：悬停或拖拽时停掉 rAF；另外尊重 `prefers-reduced-motion: reduce`（直接不启动自动滚动）。
+
+**视觉**：滚动条隐藏（`scrollbar-width: none` + `::-webkit-scrollbar{display:none}`），跑马灯态加两端渐隐遮罩（`mask-image: linear-gradient(...)`）—— 遮罩作用在轨道盒上而不是滚动内容上，所以渐隐固定在条的两端。
+
+### 6. 一次性任务惰性自动顺延（Carry-Over）
 
 未完成的一次性日程（`recurring: 'once'` 且 `carryOver: true`）采用**读写时惰性计算**，无需常驻定时器：任何 `listForDate` / `snapshot` / 写入都会触发检测，把生效日期推进到 `today`，同时把历经的每一天写进 `rolloverDates`，让月历仍能追溯。
 
-### 6. 数据模型（`version: 2`）
+### 7. 数据模型（`version: 2`）
 
 ```json
 {
@@ -208,7 +240,7 @@ node scripts/build.mjs        # → lib/index.js, lib/store.js, lib/client.js
 ### 2. 测试
 
 ```bash
-node --test test/*.test.mjs   # 75 个用例
+node --test test/*.test.mjs   # 76 个用例
 ```
 
 | 文件 | 覆盖 |
@@ -249,6 +281,7 @@ git push myfork main:feat-quadrant-view
 - ✅ **艾森豪威尔四象限**（跨象限拖拽 + 象限内打勾）
 - ✅ **垂直时间轴**（24h 网格 / 15 分钟磁吸 / 落点预览 / 边缘自动巡航 / 三种排期入口）
 - ✅ **目标层 Goals**（跨月目标、进度追踪、可隐藏常驻条、归属徽章、删除安全）
+- ✅ **目标条跑马灯**（溢出才启动 / 三份拷贝双向无限循环 / 悬停暂停 / 拖拽与滚轮划动）
 
 ### 待办
 
