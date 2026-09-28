@@ -5,6 +5,7 @@ import { startOfOccurrence, reminderKey, computeDueReminders } from '../src/noti
 import { renderReminder } from '../src/notify/message.js'
 import { encodeHeader, buildMessage, dotStuff } from '../src/notify/smtp.js'
 import { createTransport, httpTransport } from '../src/notify/transports.js'
+import { NOTIFY_KEY, defaultNotifyConfig, normalizeNotifyConfig, isRunnable } from '../src/notify/config.js'
 
 const DATE = '2026-09-28'
 
@@ -182,4 +183,59 @@ test('httpTransport 在非 2xx 时抛错', async () => {
     fetchImpl: async () => ({ ok: false, status: 500, text: async () => 'boom' }),
   })
   await assert.rejects(() => send({ recipients: [], subject: 's', text: 't' }), /500/)
+})
+
+test('默认配置是关闭的', () => {
+  const cfg = defaultNotifyConfig()
+  assert.equal(cfg.enabled, false)
+  assert.equal(cfg.leadMinutes, 10)
+  assert.deepEqual(cfg.recipients, [])
+  assert.deepEqual(cfg.sentLog, {})
+})
+
+test('normalizeNotifyConfig 对缺失输入回落默认', () => {
+  const cfg = normalizeNotifyConfig(undefined)
+  assert.equal(cfg.enabled, false)
+  assert.equal(cfg.transport.kind, 'smtp')
+})
+
+test('normalizeNotifyConfig 保留合法字段', () => {
+  const cfg = normalizeNotifyConfig({
+    enabled: true,
+    leadMinutes: 15,
+    recipients: ['a@b.c'],
+    transport: { kind: 'smtp', host: 'smtp.qq.com', port: 465, user: 'u', pass: 'p' },
+  })
+  assert.equal(cfg.enabled, true)
+  assert.equal(cfg.leadMinutes, 15)
+  assert.deepEqual(cfg.recipients, ['a@b.c'])
+  assert.equal(cfg.transport.port, 465)
+})
+
+test('isRunnable 在未启用时返回 false', () => {
+  assert.equal(isRunnable(normalizeNotifyConfig({ enabled: false })), false)
+})
+
+test('isRunnable 在没有收件人时返回 false', () => {
+  assert.equal(isRunnable(normalizeNotifyConfig({ enabled: true, recipients: [] })), false)
+})
+
+test('isRunnable 在 smtp 缺少凭据时返回 false', () => {
+  const cfg = normalizeNotifyConfig({
+    enabled: true, recipients: ['a@b.c'],
+    transport: { kind: 'smtp', host: 'smtp.qq.com', port: 465, user: '', pass: '' },
+  })
+  assert.equal(isRunnable(cfg), false)
+})
+
+test('isRunnable 在配置完整时返回 true', () => {
+  const cfg = normalizeNotifyConfig({
+    enabled: true, recipients: ['a@b.c'],
+    transport: { kind: 'smtp', host: 'smtp.qq.com', port: 465, user: 'u', pass: 'p' },
+  })
+  assert.equal(isRunnable(cfg), true)
+})
+
+test('NOTIFY_KEY 是 notify', () => {
+  assert.equal(NOTIFY_KEY, 'notify')
 })
