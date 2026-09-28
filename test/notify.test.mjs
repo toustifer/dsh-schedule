@@ -3,6 +3,7 @@ import { test } from 'node:test'
 
 import { startOfOccurrence, reminderKey, computeDueReminders } from '../src/notify/schedule-core.js'
 import { renderReminder } from '../src/notify/message.js'
+import { encodeHeader, buildMessage, dotStuff } from '../src/notify/smtp.js'
 
 const DATE = '2026-09-28'
 
@@ -119,4 +120,36 @@ test('多条命中时主题带条数,正文逐条列出', () => {
 
 test('空清单返回 null', () => {
   assert.equal(renderReminder([], CTX), null)
+})
+
+test('encodeHeader 对纯 ASCII 原样返回', () => {
+  assert.equal(encodeHeader('Hello'), 'Hello')
+})
+
+test('encodeHeader 对中文做 RFC2047 base64 编码', () => {
+  const out = encodeHeader('大学物理')
+  assert.match(out, /^=\?UTF-8\?B\?/)
+  assert.match(out, /\?=$/)
+  const b64 = out.slice('=?UTF-8?B?'.length, -2)
+  assert.equal(Buffer.from(b64, 'base64').toString('utf8'), '大学物理')
+})
+
+test('dotStuff 给行首的点补一个点', () => {
+  assert.equal(dotStuff('.hidden\nvisible'), '..hidden\r\nvisible')
+})
+
+test('buildMessage 产出合法头部与 base64 正文', () => {
+  const msg = buildMessage({
+    from: 'a@qq.com',
+    to: ['b@qq.com', 'c@qq.com'],
+    subject: '提醒',
+    text: '正文内容',
+    date: new Date('2026-09-28T08:20:00Z'),
+  })
+  assert.match(msg, /MIME-Version: 1\.0/)
+  assert.match(msg, /Content-Type: text\/plain; charset=UTF-8/)
+  assert.match(msg, /Content-Transfer-Encoding: base64/)
+  assert.match(msg, /To: b@qq\.com, c@qq\.com/)
+  const body = msg.split('\r\n\r\n')[1]
+  assert.equal(Buffer.from(body, 'base64').toString('utf8'), '正文内容')
 })
