@@ -1192,6 +1192,7 @@ git commit -m "feat(notify): 装配层与周期调度"
 
 **Files:**
 - Modify: `src/index.js`（文件头 import 区 + `apply` 结尾）
+- Modify: `scripts/build.mjs`（**必须**：新增 `notify/` 目录的拷贝，否则 lib 里缺模块）
 
 - [ ] **Step 1: 加 import**
 
@@ -1227,7 +1228,26 @@ import { startReminder } from './notify/index.js'
 }
 ~~~
 
-- [ ] **Step 3: 构建并全量测试**
+- [ ] **Step 3: 让构建脚本带上 notify/ 目录**
+
+build.mjs 原本只拷贝 `src/index.js` 与 `src/store.js`。把 import 行改成：
+
+~~~js
+import { copyFileSync, cpSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+~~~
+
+并在两个 `copyFileSync` 之后追加：
+
+~~~js
+// notify/ 是宿主端新增的子模块目录,必须一起带上,
+// 否则 lib/index.js 里的 import './notify/index.js' 会解析失败。
+// 先删后拷:避免源目录里删掉的文件在 lib 里阴魂不散。
+const libNotify = join(lib, 'notify')
+rmSync(libNotify, { recursive: true, force: true })
+cpSync(join(root, 'src', 'notify'), libNotify, { recursive: true })
+~~~
+
+- [ ] **Step 4: 构建并全量测试**
 
 Run: `npm test`
 Expected: 全部 PASS（`npm test` 会先跑 build 再跑测试）
