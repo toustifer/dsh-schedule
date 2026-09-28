@@ -2,7 +2,7 @@
  * 提醒计算核心 —— 纯函数,不读盘、不发信、不碰时钟。
  * 时间字段的解析复用 store.js 的 parseTimeFields,保证与插件既有语义一致。
  */
-import { parseTimeFields } from '../store.js'
+import { parseTimeFields, matches } from '../store.js'
 
 /**
  * 某条日程在某天的开始时刻。
@@ -28,4 +28,36 @@ export function startOfOccurrence(item) {
  */
 export function reminderKey(itemId, dateStr, hhmm) {
   return String(itemId) + '@' + dateStr + 'T' + hhmm
+}
+
+/**
+ * 算出「现在该发哪些提醒」。
+ * 窗口是闭区间 [minutesNow, minutesNow + leadMinutes]。
+ *
+ * 跨午夜的窗口(如 23:55 命中次日 00:05)不在本版范围内 —— 凌晨日程极少,
+ * 且实现它会让日期归属变复杂,按 YAGNI 略过。
+ */
+export function computeDueReminders(opts) {
+  const items = Array.isArray(opts.items) ? opts.items : []
+  const dateStr = opts.dateStr
+  const minutesNow = opts.minutesNow
+  const leadMinutes = typeof opts.leadMinutes === 'number' ? opts.leadMinutes : 10
+  const sentLog = opts.sentLog !== null && typeof opts.sentLog === 'object' ? opts.sentLog : {}
+
+  const horizonEnd = minutesNow + leadMinutes
+  const due = []
+
+  for (const item of items) {
+    if (item === null || typeof item !== 'object') continue
+    if (!matches(item, dateStr)) continue
+    const occ = startOfOccurrence(item)
+    if (occ === null) continue
+    if (occ.minutes < minutesNow || occ.minutes > horizonEnd) continue
+    const key = reminderKey(item.id, dateStr, occ.hhmm)
+    if (Object.prototype.hasOwnProperty.call(sentLog, key)) continue
+    due.push({ key, item, dateStr, hhmm: occ.hhmm, minutes: occ.minutes })
+  }
+
+  due.sort((a, b) => a.minutes - b.minutes)
+  return due
 }

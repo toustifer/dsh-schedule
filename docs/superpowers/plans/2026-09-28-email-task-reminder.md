@@ -208,7 +208,7 @@ test('已在 sentLog 里的不再命中', () => {
 })
 
 test('多条命中按时间升序返回', () => {
-  const items = [item('late', '08:35'), item('early', '08:25')]
+  const items = [item('late', '08:30'), item('early', '08:25')]
   const due = computeDueReminders({ items, dateStr: DATE, minutesNow: 500, leadMinutes: 10 })
   assert.deepEqual(due.map((d) => d.item.id), ['early', 'late'])
 })
