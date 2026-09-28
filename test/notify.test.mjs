@@ -2,28 +2,20 @@ import assert from 'node:assert/strict'
 import { test } from 'node:test'
 
 import { startOfOccurrence, reminderKey, computeDueReminders } from '../src/notify/schedule-core.js'
+import { renderReminder } from '../src/notify/message.js'
 
 const DATE = '2026-09-28'
 
 test('startOfOccurrence 优先用 startTime/endTime', () => {
-  assert.deepEqual(
-    startOfOccurrence({ startTime: '08:30', endTime: '09:55' }),
-    { minutes: 510, hhmm: '08:30' },
-  )
+  assert.deepEqual(startOfOccurrence({ startTime: '08:30', endTime: '09:55' }), { minutes: 510, hhmm: '08:30' })
 })
 
 test('startOfOccurrence 能从 time 区间解析', () => {
-  assert.deepEqual(
-    startOfOccurrence({ time: '14:15-16:40' }),
-    { minutes: 855, hhmm: '14:15' },
-  )
+  assert.deepEqual(startOfOccurrence({ time: '14:15-16:40' }), { minutes: 855, hhmm: '14:15' })
 })
 
 test('startOfOccurrence 对单一时间点也成立', () => {
-  assert.deepEqual(
-    startOfOccurrence({ time: '20:00' }),
-    { minutes: 1200, hhmm: '20:00' },
-  )
+  assert.deepEqual(startOfOccurrence({ time: '20:00' }), { minutes: 1200, hhmm: '20:00' })
 })
 
 test('startOfOccurrence 对无时间的日程返回 null', () => {
@@ -71,14 +63,12 @@ test('已过时刻的不命中', () => {
 
 test('无时间的日程永不命中', () => {
   const items = [{ id: 'x', title: 'x', recurring: 'once', date: DATE }]
-  const due = computeDueReminders({ items, dateStr: DATE, minutesNow: 500, leadMinutes: 10 })
-  assert.equal(due.length, 0)
+  assert.equal(computeDueReminders({ items, dateStr: DATE, minutesNow: 500, leadMinutes: 10 }).length, 0)
 })
 
 test('不在当天出现的日程不命中', () => {
   const items = [{ id: 'y', title: 'y', recurring: 'once', date: '2026-09-29', startTime: '08:30' }]
-  const due = computeDueReminders({ items, dateStr: DATE, minutesNow: 500, leadMinutes: 10 })
-  assert.equal(due.length, 0)
+  assert.equal(computeDueReminders({ items, dateStr: DATE, minutesNow: 500, leadMinutes: 10 }).length, 0)
 })
 
 test('已在 sentLog 里的不再命中', () => {
@@ -98,4 +88,35 @@ test('weekly 课程在指定星期命中', () => {
   const due = computeDueReminders({ items, dateStr: DATE, minutesNow: 500, leadMinutes: 10 })
   assert.equal(due.length, 1)
   assert.equal(due[0].key, 'w@2026-09-28T08:30')
+})
+
+const CTX = { dateStr: '2026-09-28', weekdayName: '周一', leadMinutes: 10 }
+
+test('单条命中时主题带标题', () => {
+  const out = renderReminder(
+    [{ item: { title: '大学物理实验[01]', startTime: '14:15', endTime: '16:40' }, hhmm: '14:15' }],
+    CTX,
+  )
+  assert.equal(out.subject, '⏰ 10 分钟后：大学物理实验[01]')
+  assert.match(out.text, /大学物理实验\[01\]/)
+  assert.match(out.text, /14:15/)
+  assert.match(out.text, /今天 2026-09-28 周一/)
+})
+
+test('多条命中时主题带条数,正文逐条列出', () => {
+  const out = renderReminder(
+    [
+      { item: { title: '大物作业' }, hhmm: '20:00' },
+      { item: { title: '统计工程学' }, hhmm: '21:00' },
+    ],
+    CTX,
+  )
+  assert.equal(out.subject, '⏰ 10 分钟内有 2 条日程')
+  assert.match(out.text, /20:00/)
+  assert.match(out.text, /大物作业/)
+  assert.match(out.text, /统计工程学/)
+})
+
+test('空清单返回 null', () => {
+  assert.equal(renderReminder([], CTX), null)
 })
