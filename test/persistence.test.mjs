@@ -38,6 +38,39 @@ function docWithUnknown() {
   }
 }
 
+// ---------- docPatch 更新已有扩展字段必须真的落盘 ----------
+
+test('docPatch 更新已存在的扩展字段时,不被磁盘旧值覆盖', async () => {
+  const { dir, path, store } = fresh()
+  try {
+    // 第一次写:磁盘上还没有 notify,必然成功
+    await store.docPatch({ set: { notify: { a: 1 } } })
+    assert.equal(readDoc(path).notify.a, 1)
+
+    // 第二次写:更新同一个字段 —— 这里曾经被磁盘旧值静默覆盖
+    await store.docPatch({ set: { notify: { a: 2 } } })
+    assert.equal(readDoc(path).notify.a, 2, 'docPatch 对已存在扩展字段的更新必须落盘')
+  } finally {
+    rmSync(dir, { recursive: true, force: true })
+  }
+})
+
+test('未触碰过的其它扩展字段仍从磁盘保留(issue #2 的保证不能被破坏)', async () => {
+  const { dir, path, store } = fresh()
+  try {
+    writeFileSync(path, JSON.stringify(docWithUnknown()))
+    const s2 = new ScheduleStore({ path, legacyPath: join(dir, 'legacy.json') })
+    // 本进程只碰 notify,不碰 settings / habits
+    await s2.docPatch({ set: { notify: { a: 1 } } })
+    const disk = readDoc(path)
+    assert.equal(disk.notify.a, 1)
+    assert.deepEqual(disk.settings, { theme: 'dark', weekStart: 1 }, '未触碰的字段必须原样保留')
+    assert.deepEqual(disk.habits, [{ id: 'h1', name: '晨跑' }])
+  } finally {
+    rmSync(dir, { recursive: true, force: true })
+  }
+})
+
 // ---------- issue #2:未知顶层字段不得被丢弃 ----------
 
 test('load keeps unknown top-level fields in memory', async () => {

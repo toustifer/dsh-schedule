@@ -419,6 +419,16 @@ export class ScheduleStore {
      * 它只代表"相对于最近一次读盘"的删除,所以每次真正读盘后归零。
      */
     this.removedKeys = new Set()
+    /**
+     * 本进程通过 docPatch 写过的扩展字段名。
+     *
+     * 与墓碑对称:serializeForDisk 默认让"磁盘未知字段优先",
+     * 这对「别的进程写进来的字段」是对的,但对「本进程刚写的字段」是错的 ——
+     * 内存里的新值会被磁盘旧值盖回去,set 等于没生效。首次写新字段能成功、
+     * 更新已有字段却静默失败,就是这么来的。
+     * 这个集合标记"本进程权威"的字段,它们以内存为准;同样在每次真正读盘后归零。
+     */
+    this.touchedKeys = new Set()
     this.loaded = false
     this.protectUnparsedFile = false
     this.writeChain = Promise.resolve()
@@ -428,6 +438,7 @@ export class ScheduleStore {
     if (this.loaded) return this.data
     // 墓碑是"相对最近一次读盘"的增量,一旦重新读盘就不再有效
     this.removedKeys = new Set()
+    this.touchedKeys = new Set()
     try {
       let source = null
       try {
@@ -548,6 +559,8 @@ export class ScheduleStore {
         if (KNOWN_TOP_KEYS.indexOf(k) !== -1) continue
         // 本进程显式删除过的字段不许从磁盘复活,否则 unset 等于没生效
         if (this.removedKeys.has(k)) continue
+        // 本进程刚写过的字段以内存为准,否则 set 会被磁盘旧值盖回去
+        if (this.touchedKeys.has(k)) continue
         out[k] = safe[k]
       }
     }
@@ -986,6 +999,8 @@ export class ScheduleStore {
         d[k] = set[k]
         // 重新写入等于撤销之前的删除
         this.removedKeys.delete(k)
+        // 标记"本进程权威":写盘时不被磁盘旧值覆盖
+        this.touchedKeys.add(k)
       }
       for (const k of unset) {
         delete d[k]
