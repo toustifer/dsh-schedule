@@ -6,6 +6,7 @@ import { renderReminder } from '../src/notify/message.js'
 import { encodeHeader, buildMessage, dotStuff } from '../src/notify/smtp.js'
 import { createTransport, httpTransport } from '../src/notify/transports.js'
 import { NOTIFY_KEY, defaultNotifyConfig, normalizeNotifyConfig, isRunnable } from '../src/notify/config.js'
+import { runReminderTick, startReminder } from '../src/notify/index.js'
 
 const DATE = '2026-09-28'
 
@@ -238,4 +239,79 @@ test('isRunnable 在配置完整时返回 true', () => {
 
 test('NOTIFY_KEY 是 notify', () => {
   assert.equal(NOTIFY_KEY, 'notify')
+})
+
+function fakeStore(notifyRaw, items) {
+  const state = { notify: notifyRaw }
+  return {
+    state,
+    async snapshot() { return { items, done: {}, goals: [] } },
+    async readDoc() { return { doc: { notify: state.notify } } },
+    async docPatch(patch) {
+      if (patch.set && patch.set.notify) state.notify = patch.set.notify
+      return { ok: true }
+    },
+  }
+}
+
+test('未启用时一次 tick 不发信也不写状态', async () => {
+  const sends = []
+  const store = fakeStore({ enabled: false }, [])
+  const out = await runReminderTick({
+    store, now: new Date('2026-09-28T08:20:00'), send: async (p) => { sends.push(p) },
+  })
+  assert.equal(sends.length, 0)
+  assert.equal(out.sent, 0)
+})
+
+test('命中时发信并写回 sentLog', async () => {
+  const sends = []
+  const items = [{ id: 'a', title: '大物作业', recurring: 'once', date: '2026-09-28', startTime: '08:30' }]
+  const store = fakeStore({
+    enabled: true, leadMinutes: 10, recipients: ['me@qq.com'],
+    transport: { kind: 'webhook', url: 'https://x.invalid' },
+    sentLog: {},
+  }, items)
+  const out = await runReminderTick({
+    store, now: new Date('2026-09-28T08:20:00'), send: async (p) => { sends.push(p) },
+  })
+  assert.equal(out.sent, 1)
+  assert.equal(sends.length, 1)
+  assert.deepEqual(sends[0].recipients, ['me@qq.com'])
+  assert.equal(store.state.notify.sentLog['a@2026-09-28T08:30'] !== undefined, true)
+})
+
+test('同一时刻重复 tick 不会重复发', async () => {
+  const sends = []
+  const items = [{ id: 'a', title: 'x', recurring: 'once', date: '2026-09-28', startTime: '08:30' }]
+  const store = fakeStore({
+    enabled: true, leadMinutes: 10, recipients: ['me@qq.com'],
+    transport: { kind: 'webhook', url: 'https://x.invalid' }, sentLog: {},
+  }, items)
+  const opts = { store, now: new Date('2026-09-28T08:20:00'), send: async (p) => { sends.push(p) } }
+  await runReminderTick(opts)
+  await runReminderTick(opts)
+  assert.equal(sends.length, 1)
+})
+
+test('发送失败时不写 sentLog', async () => {
+  const items = [{ id: 'a', title: 'x', recurring: 'once', date: '2026-09-28', startTime: '08:30' }]
+  const store = fakeStore({
+    enabled: true, leadMinutes: 10, recipients: ['me@qq.com'],
+    transport: { kind: 'webhook', url: 'https://x.invalid' }, sentLog: {},
+  }, items)
+  const out = await runReminderTick({
+    store, now: new Date('2026-09-28T08:20:00'),
+    send: async () => { throw new Error('boom') },
+  })
+  assert.equal(out.sent, 0)
+  assert.equal(out.failed, 1)
+  assert.deepEqual(store.state.notify.sentLog, {})
+})
+
+test('startReminder 返回一个可调用的停表函数', () => {
+  const store = fakeStore({ enabled: false }, [])
+  const stop = startReminder({ store, intervalMs: 100000 })
+  assert.equal(typeof stop, 'function')
+  stop()
 })
