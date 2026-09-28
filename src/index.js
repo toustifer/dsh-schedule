@@ -18,6 +18,7 @@
 
 import { defineTool } from '@deepseek-ai/dsh-tools'
 import { ScheduleStore } from './store.js'
+import { startReminder } from './notify/index.js'
 
 export const name = 'dsh-schedule'
 export const inject = ['tools']
@@ -292,7 +293,7 @@ export function apply(ctx) {
     + 'set 是要写入的字段(浅合并,同名整体替换),unset 是要删除的字段名数组。'
     + '注意:内置字段 items / done / goals / version / writtenBy 一律拒绝,它们有各自的专用工具与完整校验。写入的扩展字段会被存储层原样保留。',
     {
-      set: { type: 'object', description: '要写入的扩展字段,如 {"tags": ["学期","冲刺"]}' },
+      set: { type: 'object', additionalProperties: true, description: '要写入的扩展字段,如 {"tags": ["学期","冲刺"]}' },
       unset: { type: 'array', description: '要删除的扩展字段名数组' },
     },
     async (args) => {
@@ -434,6 +435,17 @@ export function apply(ctx) {
       json(res, await store.docPatch(body))
     })
   })
+
+  // ---- 邮件提醒:每分钟检查一次,DSH 存活期间生效 ----
+  // 注意:插件活在 DSH 进程内,DSH 未运行时不会有任何提醒(这是架构约束,非缺陷)。
+  ctx.effect(() => {
+    const stop = startReminder({
+      store,
+      intervalMs: 60000,
+      onError: (msg) => console.warn('[dsh-schedule] notify error:', msg),
+    })
+    return () => stop()
+  }, 'dsh-schedule: reminder ticker')
 
   console.log('[dsh-schedule] host ready')
 }
