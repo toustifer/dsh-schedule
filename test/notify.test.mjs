@@ -4,6 +4,7 @@ import { test } from 'node:test'
 import { startOfOccurrence, reminderKey, computeDueReminders } from '../src/notify/schedule-core.js'
 import { renderReminder } from '../src/notify/message.js'
 import { encodeHeader, buildMessage, dotStuff } from '../src/notify/smtp.js'
+import { createTransport, httpTransport } from '../src/notify/transports.js'
 
 const DATE = '2026-09-28'
 
@@ -152,4 +153,33 @@ test('buildMessage 产出合法头部与 base64 正文', () => {
   assert.match(msg, /To: b@qq\.com, c@qq\.com/)
   const body = msg.split('\r\n\r\n')[1]
   assert.equal(Buffer.from(body, 'base64').toString('utf8'), '正文内容')
+})
+
+test('未知 kind 抛错', () => {
+  assert.throws(() => createTransport({ kind: 'carrier-pigeon' }), /未知的 transport/)
+})
+
+test('httpTransport 把提醒 POST 成 JSON', async () => {
+  let captured = null
+  const send = httpTransport({
+    url: 'https://example.invalid/x',
+    fetchImpl: async (url, init) => {
+      captured = { url, init }
+      return { ok: true, status: 200, text: async () => 'ok' }
+    },
+  })
+  await send({ recipients: ['a@b.c'], subject: '主题', text: '正文' })
+  assert.equal(captured.url, 'https://example.invalid/x')
+  assert.equal(captured.init.method, 'POST')
+  const payload = JSON.parse(captured.init.body)
+  assert.equal(payload.subject, '主题')
+  assert.equal(payload.text, '正文')
+})
+
+test('httpTransport 在非 2xx 时抛错', async () => {
+  const send = httpTransport({
+    url: 'https://example.invalid/x',
+    fetchImpl: async () => ({ ok: false, status: 500, text: async () => 'boom' }),
+  })
+  await assert.rejects(() => send({ recipients: [], subject: 's', text: 't' }), /500/)
 })
