@@ -50,7 +50,7 @@ export const DATA_FORMAT_VERSION = 2
  * 同机多进程 / 多版本 / 云同步共存时,这是唯一能事后归因的线索。
  * 必须与 package.json 的 version 一致(test/goals.test.mjs 有断言守着)。
  */
-export const DATA_WRITER = 'dsh-schedule@0.4.0'
+export const DATA_WRITER = 'dsh-schedule@0.4.1'
 
 /**
  * 本版本认识的顶层字段。其余字段一律**原样保留**,绝不按白名单重构整个文档

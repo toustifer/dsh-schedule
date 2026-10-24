@@ -113,10 +113,15 @@ dsh web
 ```
 
 > 不需要 `dsh-better-sidebar` 等任何第三方侧边栏插件 —— 本插件直接使用 DSH 官方的 `sidebarRightTabs`。
+>
+> **适配版本**：DSH `0.2.0-rc.2`（指南页式右侧栏）。核心服务与入口：`sidebarRightTabs` / `sidebarRight` + `guide` 条目。
 
 ## 使用 Usage
 
-1. 打开 DSH Web，点会话右上角的 **📅** 图标（或直接展开右侧栏并切到「日程」）打开日程面板。
+1. 打开 DSH Web，任选一种方式打开日程面板：
+   - 右侧栏「**新标签页**」指南页 → 点「**日程**」卡片；
+   - 会话标题栏右上角的 **📅** 图标；
+   - 插件/脚本里调 `ctx.sidebarRight.openTab('schedule')`。
 2. **今天** 视图直接打勾完成；点 ✎ 改，点标题进详情。
 3. **四象限** 视图按住卡片拖到别的象限 → 优先级即时生效。
 4. **时间轴** 视图：把待排期卡片拖到刻度上，或先点选待办再点网格，或直接点「⏱️ 排到当前」。
@@ -157,7 +162,7 @@ dsh web
 
 ```sh
 node scripts/build.mjs     # 产出 lib/（Host ESM + Client C6 bundle）
-node --test test/*.test.mjs # 75 个用例：存储核心 + 客户端纯逻辑 + 构建产物契约
+node --test test/*.test.mjs # 140 个用例：存储核心 + 客户端纯逻辑 + 构建产物契约
 ```
 
 改动后需重启 `dsh web` 并在浏览器 `Ctrl + F5` 强制刷新。

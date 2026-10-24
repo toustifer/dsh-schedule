@@ -1,4 +1,10 @@
-# 未发布
+# v0.4.1 — 兼容 DSH 0.2.0-rc.2（日程 tab "消失"修复）
+
+## 🐛 修复
+
+- **升级 DSH 后右侧栏「日程」页消失、且无处可加** — 定位到根因不是插件没加载（`dsh-schedule` 一直在 `__DSH_BOOT__` 的 entry 图里，`apply` 正常跑完、面板也能渲染），而是**入口少了一条**：DSH 0.2.x 的右侧栏把「新标签页」做成了一张指南页，指南页上的胶囊**只来自各页面类型自己声明（贡献）的 `guide` 条目**。本插件的 tab 定义只写了 `id` / `kind` / `priority` / `title`，没写 `guide`，于是类型注册成功却没有任何入口能把它加回侧栏；升级时旧布局被重置，tab 就这样"蒸发"了。现在在 `scheduleTabDefinition()` 里补上 `guide` 条目（`order: 50`，带图标与一句描述），指南页会稳定出现「日程」卡片，点一下即可加入侧栏。会话标题栏的 📅 按钮仍是第二条入口。
+  - 顺带把客户端顶部注释里过时的"better-sidebar 侧边卡片 / `+` 菜单"说明改成当前真实机制（`ctx.sidebarRightTabs` 的 tab 类型 + guide 入口）。
+- **浏览器半身没有 `timer` 服务，所有周期任务静默失效** — DSH 只在宿主侧提供 `cordis-plugin-timer`，`ctx.get('timer')` 在 web 端恒为 `undefined`。原代码遇到 `timerSvc === undefined` 时直接 `return undefined`，后果是：面板的 30 秒自刷新不跑（别的会话里用 agent 工具改了日程，面板看不到）、「现在」红线与「即将开始」高亮不随时间走、tab 角标永远停在首次拉取的值。新增 `every(ms, fn)` / `after(ms, fn)` 两个双通道包装（有 `timer` 用 `timer`，没有就退回 `setInterval` / `setTimeout`，统一返回 disposer，React effect 与 `ctx.effect` 都能直接清理），四处调用点全部改走它们。
 
 ## ✨ 新增
 

@@ -2,16 +2,22 @@
  * dsh-schedule — 浏览器半身(CommonJS 形式,由 scripts/build.mjs 包装为
  * DSH client-modules C6 bundle;纯逻辑辅助在 logic.cjs 中先行内联)。
  *
- * 表面(仅一种形态):
- *   1. better-sidebar 侧边卡片「日程」tab(registerTab,order 50,
- *      由侧边栏顶部「+」菜单添加/打开;single:true 幂等)—— 今天 / 本周 /
- *      历史月历+统计、行内 ✎ 编辑、点标题进详情、添加表单折叠为「+ 添加」、
- *      tab 角标显示今天剩余待办
+ * 表面(全部挂在 DSH 原生右侧栏 / 会话头上,无降级抽屉):
+ *   1. 右侧栏页面「日程」—— 机制上是一个 tab 类型(registerTab 到核心服务
+ *      `ctx.sidebarRightTabs`,kind = schedule,priority = extension,order 50),
+ *      正文注册在 keyed slot `sidebar.right.pane.tab` 的 id/kind 双 key 上。
+ *      入口有三条:
+ *        a. 侧栏「新标签页」指南页 —— 由定义里的 `guide` 条目贡献(DSH 0.2.x
+ *           的指南页只列 guide 条目,没有 guide 就等于没有入口);
+ *        b. 会话标题栏右侧 📅「日程规划」按钮(conversation.session.header.utilities);
+ *        c. better-sidebar 等其他入口调用 `ctx.sidebarRight.openTab('schedule')`。
+ *      面板内含:今天 / 四象限 / 时间轴 / 本周 / 历史,行内 ✎ 编辑、点标题进详情、
+ *      添加表单折叠为「+ 添加」、tab 角标显示今天剩余待办。
  *   2. 输入框右侧 🔗 关联按钮(conversation.input.right)+ shell.overlay
  *      里的关联选择弹层 —— 把当前会话关联到某条日程
  *
- * betterSidebar 是硬依赖(inject),Cordis 会等服务出现后再 apply,
- * 不再有"有时抽屉、有时侧边卡片"的竞态;因此不保留任何降级抽屉。
+ * 右侧栏与 sessions 是硬依赖(inject),Cordis 会等服务出现后再 apply,
+ * 不再有"有时抽屉、有时侧边卡片"的竞态。
  *
  * 数据面:/api/dailytask/*。依赖 React(模块表 externals),无构建期依赖。
  */
@@ -44,6 +50,28 @@ function apply(ctx) {
   const timerSvc = ctx.get('timer')
   const sidebarRight = ctx.sidebarRight
   const sidebarRightTabs = ctx.sidebarRightTabs
+
+  // 浏览器半身没有 timer 服务(ctx.get('timer') 恒为 undefined,DSH 只在宿主侧
+  // 提供 cordis-plugin-timer),所以周期任务必须自带 window 定时器兜底:
+  // 否则面板不会自刷新、"现在"红线不会走、tab 角标永远是旧值。
+  // 统一返回一个 disposer,React 的 effect 清理和 ctx.effect 都能直接吃。
+  function every(ms, fn) {
+    if (timerSvc !== undefined && typeof timerSvc.interval === 'function') {
+      const dispose = timerSvc.interval(fn, ms)
+      return typeof dispose === 'function' ? dispose : () => {}
+    }
+    const id = setInterval(() => { try { fn() } catch (e) { console.error('[dsh-schedule] interval task failed', e) } }, ms)
+    return () => clearInterval(id)
+  }
+
+  function after(ms, fn) {
+    if (timerSvc !== undefined && typeof timerSvc.timeout === 'function') {
+      const dispose = timerSvc.timeout(fn, ms)
+      return typeof dispose === 'function' ? dispose : () => {}
+    }
+    const id = setTimeout(() => { try { fn() } catch (e) { console.error('[dsh-schedule] timeout task failed', e) } }, ms)
+    return () => clearTimeout(id)
+  }
 
   async function api(method, args) {
     const res = await fetch('/api/dailytask/' + method, {
@@ -149,9 +177,7 @@ function apply(ctx) {
     const [confirmDel, setConfirmDel] = React.useState(false)
     React.useEffect(() => {
       if (!confirmDel) return undefined
-      if (timerSvc !== undefined && typeof timerSvc.timeout === 'function') return timerSvc.timeout(() => setConfirmDel(false), 3000)
-      const t = setTimeout(() => setConfirmDel(false), 3000)
-      return () => clearTimeout(t)
+      return after(3000, () => setConfirmDel(false))
     }, [confirmDel])
     const links = Array.isArray(item.linkedSessions) ? item.linkedSessions : []
     const linkedHere = links.indexOf(currentSessionId) !== -1
@@ -388,9 +414,7 @@ function apply(ctx) {
     const [confirmDel, setConfirmDel] = React.useState(false)
     React.useEffect(() => {
       if (!confirmDel) return undefined
-      if (timerSvc !== undefined && typeof timerSvc.timeout === 'function') return timerSvc.timeout(() => setConfirmDel(false), 3000)
-      const t = setTimeout(() => setConfirmDel(false), 3000)
-      return () => clearTimeout(t)
+      return after(3000, () => setConfirmDel(false))
     }, [confirmDel])
     const today = todayStr()
     const links = Array.isArray(item.linkedSessions) ? item.linkedSessions : []
@@ -1769,14 +1793,12 @@ function apply(ctx) {
     const [, setClockTick] = React.useState(0)
     React.useEffect(() => {
       if (!active) return undefined
-      if (timerSvc === undefined || typeof timerSvc.interval !== 'function') return undefined
-      return timerSvc.interval(() => { setClockTick((n) => n + 1) }, 30000)
+      return every(30000, () => { setClockTick((n) => n + 1) })
     }, [active])
     React.useEffect(() => {
       if (!active) return undefined
       refresh()
-      if (timerSvc === undefined || typeof timerSvc.interval !== 'function') return undefined
-      return timerSvc.interval(() => { refresh() }, 30000)
+      return every(30000, () => { refresh() })
     }, [active])
     async function onMutate(method, args) {
       try { await call(method, args) } catch (e) { console.error('[dsh-schedule] mutate failed', e) }
@@ -2088,12 +2110,31 @@ function apply(ctx) {
   const SCHEDULE_ID = "dsh-schedule";
   const SCHEDULE_KIND = "schedule";
 
+  // 指南页胶囊的图标槽要一个 React 组件,这里用日历 emoji 顶位,
+  // 免得和别的入口一样都显示成"方块占位符"。
+  function ScheduleGuideIcon() {
+    return React.createElement("span", { style: { fontSize: "15px", lineHeight: 1 }, "aria-hidden": "true" }, "📅");
+  }
+
   function scheduleTabDefinition() {
     return {
       id: SCHEDULE_ID,
       kind: SCHEDULE_KIND,
       priority: "extension",
       title: () => "日程",
+      // DSH 0.2.x 的右侧栏只有「新标签页」指南页能列出可打开的页面类型,
+      // 而指南页的内容完全由各页面类型自己贡献的 guide 条目决定。
+      // 不声明 guide 时,这个 tab 类型虽然注册成功,却没有任何入口能加到侧栏
+      // (升级 DSH 后旧布局被重置,日程 tab 就是这样"消失"的)。
+      guide: [
+        {
+          id: "schedule",
+          order: 50,
+          title: () => "日程",
+          description: () => "今天 / 四象限 / 时间轴 / 本周 / 历史,含跨月长期目标",
+          icon: ScheduleGuideIcon,
+        },
+      ],
     };
   }
 
@@ -2161,9 +2202,7 @@ function apply(ctx) {
   );
 
   // 角标数据保底刷新:每 60 秒拉一次(面板没开时角标也能保持新鲜)。
-  if (timerSvc !== undefined && typeof timerSvc.interval === 'function') {
-    ctx.effect(() => timerSvc.interval(() => { refresh() }, 60000), 'dsh-schedule: badge refresher')
-  }
+  ctx.effect(() => every(60000, () => { refresh() }), 'dsh-schedule: badge refresher')
 
   refresh()
   console.log('[dsh-schedule] client ready, side-card tab registered')

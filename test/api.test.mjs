@@ -8,6 +8,11 @@ import { ScheduleStore } from '../src/store.js'
 
 const root = new URL('..', import.meta.url)
 
+// writtenBy 必须跟着 package.json 的 version 走(见 persistence.test.mjs 的
+// DATA_WRITER 契约)。这里从 package.json 取期望值,免得每次发版都要手改断言。
+const PKG_VERSION = JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf8')).version
+const EXPECTED_WRITER = `dsh-schedule@${PKG_VERSION}`
+
 function fresh() {
   const dir = mkdtempSync(join(tmpdir(), 'dsh-api-'))
   const path = join(dir, 'data.json')
@@ -135,7 +140,7 @@ test('doc_patch writes extension fields and doc_get reads them back', async () =
     assert.deepEqual(got.doc.ui, { marqueeSpeed: 30 })
     assert.deepEqual(got.extensionKeys.sort(), ['tags', 'ui'])
     assert.equal(got.version, 2)
-    assert.equal(got.writtenBy, 'dsh-schedule@0.4.0')
+    assert.equal(got.writtenBy, EXPECTED_WRITER)
 
     // 落盘后仍在
     assert.deepEqual(readDoc(path).tags, ['学期', '冲刺'])
