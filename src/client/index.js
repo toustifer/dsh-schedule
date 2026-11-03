@@ -172,6 +172,145 @@ function apply(ctx) {
     return diff >= 0 && diff <= leadMinutes
   }
 
+  // ---- 任务倒计时（每行右侧 ▶）：把一条日程当番茄钟来跑 ----
+  // 时长优先取该条自己的时间块（endTime - startTime）；没有块就落回默认 25 分钟。
+  // 状态落在 localStorage，所以刷新页面、切标签、关掉面板都不会把正在跑的倒计时弄丢。
+  const CD_PREFIX = 'dsh-schedule:cd:v1:'
+  const CD_DEFAULT_MIN = 25
+
+  function cdRead(key) {
+    try {
+      const raw = window.localStorage.getItem(key)
+      if (!raw) return null
+      const t = JSON.parse(raw)
+      if (!t || typeof t !== 'object' || typeof t.endsAt !== 'number') return null
+      if (t.done) return { endsAt: t.endsAt, remainMs: 0, paused: false, done: true }
+      if (t.paused) return { endsAt: t.endsAt, remainMs: typeof t.remainMs === 'number' ? t.remainMs : 0, paused: true, done: false }
+      const remain = t.endsAt - Date.now()
+      if (remain <= 0) return { endsAt: t.endsAt, remainMs: 0, paused: false, done: true }
+      return { endsAt: t.endsAt, remainMs: remain, paused: false, done: false }
+    } catch (e) {
+      return null
+    }
+  }
+
+  function cdWrite(key, value) {
+    try {
+      if (value) window.localStorage.setItem(key, JSON.stringify(value))
+      else window.localStorage.removeItem(key)
+    } catch (e) {
+      // 隐私模式 / 配额满：倒计时仍可用，只是不跨刷新保存
+    }
+  }
+
+  function cdMinutesOf(item) {
+    const a = String(item.startTime || '').split(':')
+    const b = String(item.endTime || '').split(':')
+    if (a.length === 2 && b.length === 2) {
+      const s = Number(a[0]) * 60 + Number(a[1])
+      const e = Number(b[0]) * 60 + Number(b[1])
+      if (Number.isFinite(s) && Number.isFinite(e) && e > s) return e - s
+    }
+    return CD_DEFAULT_MIN
+  }
+
+  function cdText(ms) {
+    const total = Math.max(0, Math.round(ms / 1000))
+    const m = Math.floor(total / 60)
+    const s = total % 60
+    return (m < 10 ? '0' : '') + m + ':' + (s < 10 ? '0' : '') + s
+  }
+
+  function cdNotify(item) {
+    try {
+      if (typeof Notification === 'undefined') return
+      if (Notification.permission === 'granted') {
+        new Notification('时间到：' + item.title, { body: '这一轮倒计时结束了' })
+      }
+    } catch (e) {
+      // 没有通知权限就不提醒，界面上的 ⏰ 仍然是可见的
+    }
+  }
+
+  const CD_STYLE_IDLE = {
+    flex: 'none', border: '1px solid rgba(127,127,127,0.55)', background: 'transparent',
+    color: 'inherit', opacity: 0.8, borderRadius: '8px', padding: '0 6px', fontSize: '12px',
+    lineHeight: '20px', cursor: 'pointer', fontVariantNumeric: 'tabular-nums',
+  }
+  const CD_STYLE_RUN = {
+    flex: 'none', display: 'inline-flex', alignItems: 'center', gap: '2px',
+    border: '1px solid #0969da', color: '#0969da', borderRadius: '8px', padding: '0 4px',
+    fontSize: '12px', lineHeight: '20px', fontVariantNumeric: 'tabular-nums',
+  }
+  const CD_STYLE_PAUSED = {
+    flex: 'none', display: 'inline-flex', alignItems: 'center', gap: '2px',
+    border: '1px solid rgba(127,127,127,0.55)', color: 'rgba(127,127,127,0.95)', borderRadius: '8px',
+    padding: '0 4px', fontSize: '12px', lineHeight: '20px', fontVariantNumeric: 'tabular-nums',
+  }
+  const CD_STYLE_DONE = {
+    flex: 'none', border: '1px solid #bf8700', background: 'transparent', color: '#bf8700',
+    borderRadius: '8px', padding: '0 6px', fontSize: '12px', lineHeight: '20px', cursor: 'pointer',
+  }
+  const CD_STYLE_ICO = {
+    border: 'none', background: 'transparent', color: 'inherit', cursor: 'pointer',
+    fontSize: '11px', padding: '0 2px', lineHeight: '20px',
+  }
+
+  function useCountdown(key, item) {
+    const [state, setState] = React.useState(function () { return cdRead(key) })
+    const mode = state === null ? 'idle' : state.done ? 'done' : state.paused ? 'paused' : 'run'
+
+    // 只有运行中才起秒表；暂停/结束/未开始都不占定时器
+    React.useEffect(function () {
+      if (mode !== 'run') return undefined
+      return every(1000, function () {
+        setState(function (prev) {
+          if (!prev || prev.done || prev.paused) return prev
+          const remain = prev.endsAt - Date.now()
+          if (remain <= 0) {
+            const finished = { endsAt: prev.endsAt, remainMs: 0, paused: false, done: true }
+            cdWrite(key, finished)
+            cdNotify(item)
+            return finished
+          }
+          return { endsAt: prev.endsAt, remainMs: remain, paused: false, done: false }
+        })
+      })
+    }, [mode, key])
+
+    return {
+      state: state,
+      minutes: cdMinutesOf(item),
+      start: function () {
+        try {
+          if (typeof Notification !== 'undefined' && Notification.permission === 'default') Notification.requestPermission()
+        } catch (e) { /* 忽略 */ }
+        const ms = cdMinutesOf(item) * 60000
+        const next = { endsAt: Date.now() + ms, remainMs: ms, paused: false, done: false }
+        cdWrite(key, next)
+        setState(next)
+      },
+      toggle: function () {
+        setState(function (prev) {
+          if (!prev) return prev
+          let next
+          if (prev.paused) {
+            const ms = Math.max(1000, prev.remainMs)
+            next = { endsAt: Date.now() + ms, remainMs: ms, paused: false, done: false }
+          } else {
+            next = { endsAt: prev.endsAt, remainMs: Math.max(0, prev.endsAt - Date.now()), paused: true, done: false }
+          }
+          cdWrite(key, next)
+          return next
+        })
+      },
+      stop: function () {
+        cdWrite(key, null)
+        setState(null)
+      },
+    }
+  }
+
   function ScheduleRow(props) {
     const { item, dateStr, done, currentSessionId, onMutate, onOpenDetail, onOpenEdit } = props
     const [confirmDel, setConfirmDel] = React.useState(false)
@@ -179,6 +318,8 @@ function apply(ctx) {
       if (!confirmDel) return undefined
       return after(3000, () => setConfirmDel(false))
     }, [confirmDel])
+    // 倒计时：按「这一条 + 这一天」存，同一任务的不同日期互不干扰
+    const cd = useCountdown(CD_PREFIX + item.id + '|' + (dateStr || ''), item)
     const links = Array.isArray(item.linkedSessions) ? item.linkedSessions : []
     const linkedHere = links.indexOf(currentSessionId) !== -1
     const chips = []
@@ -247,6 +388,37 @@ function apply(ctx) {
           chips.length > 0 ? React.createElement('span', { className: 'dsh-sched-chips' }, chips) : null,
         ) : null,
       ),
+      cd.state === null
+        ? React.createElement('button', {
+            style: CD_STYLE_IDLE,
+            title: '开始倒计时（' + cd.minutes + ' 分钟）',
+            onClick: () => cd.start(),
+          }, '▶')
+        : cd.state.done
+          ? React.createElement('button', {
+              style: CD_STYLE_DONE,
+              title: '时间到 —— 点一下标记完成',
+              onClick: () => {
+                cd.stop()
+                if (!done) onMutate('set-done', { id: item.id, date: dateStr, done: true })
+              },
+            }, '⏰✓')
+          : React.createElement('span', {
+              style: cd.state.paused ? CD_STYLE_PAUSED : CD_STYLE_RUN,
+              title: cd.state.paused ? '已暂停' : '倒计时中',
+            },
+              React.createElement('span', null, cdText(cd.state.remainMs)),
+              React.createElement('button', {
+                style: CD_STYLE_ICO,
+                title: cd.state.paused ? '继续' : '暂停',
+                onClick: () => cd.toggle(),
+              }, cd.state.paused ? '▶' : '⏸'),
+              React.createElement('button', {
+                style: CD_STYLE_ICO,
+                title: '结束倒计时',
+                onClick: () => cd.stop(),
+              }, '⏹'),
+            ),
       React.createElement('button', {
         className: 'dsh-sched-editbtn',
         title: '编辑日程',
