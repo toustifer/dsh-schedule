@@ -256,59 +256,282 @@ function apply(ctx) {
     fontSize: '11px', padding: '0 2px', lineHeight: '20px',
   }
 
+  // ---- 倒计时的全局状态 ----
+  // localStorage 是唯一真相来源，内存里加一层订阅：行内的小秒表和 shell.overlay 里的
+  // 大面板读同一份状态，所以在哪边暂停都一样。关掉大面板只是把它转成 paused，
+  // 下次点行内的秒数、或再点 ▶，都从真实剩余时间接着走（不从 0 重来）。
+  const cdSubs = []
+  const cdFocusSubs = []
+  let cdMem = null
+  let cdTickDispose = null
+  let cdFocused = null
+
+  function cdAll() {
+    if (cdMem) return cdMem
+    cdMem = {}
+    try {
+      for (let i = 0; i < window.localStorage.length; i++) {
+        const k = window.localStorage.key(i)
+        if (!k || k.indexOf(CD_PREFIX) !== 0) continue
+        const st = cdRead(k)
+        if (st) cdMem[k] = st
+      }
+    } catch (e) {
+      cdMem = {}
+    }
+    return cdMem
+  }
+
+  function cdRunning(st) {
+    return !!st && !st.done && !st.paused
+  }
+
+  function cdState(key) {
+    return cdAll()[key] || null
+  }
+
+  function cdRemain(st) {
+    if (!st || st.done) return 0
+    if (st.paused) return Math.max(0, st.remainMs || 0)
+    return Math.max(0, st.endsAt - Date.now())
+  }
+
+  function cdSyncTicker() {
+    const all = cdAll()
+    const anyRunning = Object.keys(all).some(function (k) { return cdRunning(all[k]) })
+    if (anyRunning && !cdTickDispose) {
+      cdTickDispose = every(1000, cdTick)
+    } else if (!anyRunning && cdTickDispose) {
+      cdTickDispose()
+      cdTickDispose = null
+    }
+  }
+
+  function cdEmit() {
+    for (const fn of cdSubs.slice()) { try { fn() } catch (e) { /* 单个订阅失败不影响其它 */ } }
+    for (const fn of cdFocusSubs.slice()) { try { fn() } catch (e) { /* ignore */ } }
+    cdSyncTicker()
+  }
+
+  function cdTick() {
+    const all = cdAll()
+    let finished = null
+    Object.keys(all).forEach(function (k) {
+      const st = all[k]
+      if (!cdRunning(st)) return
+      if (st.endsAt - Date.now() <= 0) {
+        all[k] = { endsAt: st.endsAt, totalMs: st.totalMs, remainMs: 0, paused: false, done: true, title: st.title }
+        cdWrite(k, all[k])
+        finished = all[k]
+      }
+    })
+    if (finished) cdNotify({ title: finished.title || '任务' })
+    cdEmit()
+  }
+
+  function cdSubscribe(fn) {
+    cdSubs.push(fn)
+    cdSyncTicker()
+    return function () {
+      const i = cdSubs.indexOf(fn)
+      if (i >= 0) cdSubs.splice(i, 1)
+    }
+  }
+
+  function cdSet(key, st) {
+    cdAll()
+    if (st) cdMem[key] = st
+    else delete cdMem[key]
+    cdWrite(key, st)
+    cdEmit()
+  }
+
+  function cdFocus(key) {
+    cdFocused = key
+    for (const fn of cdFocusSubs.slice()) { try { fn() } catch (e) { /* ignore */ } }
+  }
+
+  function cdStart(key, item) {
+    try {
+      if (typeof Notification !== 'undefined' && Notification.permission === 'default') Notification.requestPermission()
+    } catch (e) { /* 通知不可用就只靠界面提示 */ }
+    const ms = cdMinutesOf(item) * 60000
+    cdSet(key, { endsAt: Date.now() + ms, totalMs: ms, remainMs: ms, paused: false, done: false, title: item.title })
+    cdFocus(key)
+  }
+
+  function cdPauseResume(key) {
+    const st = cdState(key)
+    if (!st || st.done) return
+    if (st.paused) {
+      const ms = Math.max(1000, st.remainMs || 0)
+      cdSet(key, { endsAt: Date.now() + ms, totalMs: st.totalMs || ms, remainMs: ms, paused: false, done: false, title: st.title })
+    } else {
+      cdSet(key, { endsAt: st.endsAt, totalMs: st.totalMs, remainMs: Math.max(0, st.endsAt - Date.now()), paused: true, done: false, title: st.title })
+    }
+  }
+
+  function cdStop(key) {
+    cdSet(key, null)
+    if (cdFocused === key) cdFocus(null)
+  }
+
+  // 大面板里点「完成」：直接落库 set-done，再收掉倒计时（key 就是 id|日期）
+  function cdMarkDone(key) {
+    const parts = String(key).split('|')
+    const id = parts[0]
+    const date = parts[1] || ''
+    cdStop(key)
+    if (!id) return
+    api('set-done', { id: id, date: date, done: true }).catch(function () { /* 失败就留给人手点 */ })
+  }
+
   function useCountdown(key, item) {
-    const [state, setState] = React.useState(function () { return cdRead(key) })
-    const mode = state === null ? 'idle' : state.done ? 'done' : state.paused ? 'paused' : 'run'
-
-    // 只有运行中才起秒表；暂停/结束/未开始都不占定时器
-    React.useEffect(function () {
-      if (mode !== 'run') return undefined
-      return every(1000, function () {
-        setState(function (prev) {
-          if (!prev || prev.done || prev.paused) return prev
-          const remain = prev.endsAt - Date.now()
-          if (remain <= 0) {
-            const finished = { endsAt: prev.endsAt, remainMs: 0, paused: false, done: true }
-            cdWrite(key, finished)
-            cdNotify(item)
-            return finished
-          }
-          return { endsAt: prev.endsAt, remainMs: remain, paused: false, done: false }
-        })
-      })
-    }, [mode, key])
-
+    const [, bump] = React.useReducer(function (x) { return x + 1 }, 0)
+    React.useEffect(function () { return cdSubscribe(bump) }, [])
+    const state = cdState(key)
     return {
+      key: key,
       state: state,
       minutes: cdMinutesOf(item),
-      start: function () {
-        try {
-          if (typeof Notification !== 'undefined' && Notification.permission === 'default') Notification.requestPermission()
-        } catch (e) { /* 忽略 */ }
-        const ms = cdMinutesOf(item) * 60000
-        const next = { endsAt: Date.now() + ms, remainMs: ms, paused: false, done: false }
-        cdWrite(key, next)
-        setState(next)
-      },
-      toggle: function () {
-        setState(function (prev) {
-          if (!prev) return prev
-          let next
-          if (prev.paused) {
-            const ms = Math.max(1000, prev.remainMs)
-            next = { endsAt: Date.now() + ms, remainMs: ms, paused: false, done: false }
-          } else {
-            next = { endsAt: prev.endsAt, remainMs: Math.max(0, prev.endsAt - Date.now()), paused: true, done: false }
-          }
-          cdWrite(key, next)
-          return next
-        })
-      },
-      stop: function () {
-        cdWrite(key, null)
-        setState(null)
-      },
+      remain: cdRemain(state),
+      start: function () { cdStart(key, item) },
+      toggle: function () { cdPauseResume(key) },
+      stop: function () { cdStop(key) },
+      open: function () { cdFocus(key) },
     }
+  }
+
+  // ---- 大倒计时面板（挂在 shell.overlay，全屏浮层）----
+  const CD_FS = {
+    position: 'fixed', inset: '0', zIndex: 4000, background: 'rgba(0,0,0,0.55)',
+    display: 'flex', alignItems: 'center', justifyContent: 'center',
+  }
+  const CD_ICONBTN = {
+    flex: 'none', border: '1px solid rgba(127,127,127,0.45)', background: 'transparent',
+    color: 'inherit', opacity: 0.85, borderRadius: '8px', width: '28px', height: '26px',
+    fontSize: '13px', lineHeight: '24px', cursor: 'pointer', padding: 0,
+  }
+  const CD_BTN_MAIN = {
+    flex: '1', border: '1px solid #0969da', background: 'rgba(9,105,218,0.12)', color: '#4aa3ff',
+    borderRadius: '10px', padding: '9px 14px', fontSize: '14px', fontWeight: 600, cursor: 'pointer',
+  }
+  const CD_BTN_SUB = {
+    flex: 'none', border: '1px solid rgba(127,127,127,0.45)', background: 'transparent',
+    color: 'inherit', opacity: 0.85, borderRadius: '10px', padding: '9px 14px', fontSize: '14px', cursor: 'pointer',
+  }
+
+  function CountdownOverlay() {
+    const focused = (function () {
+      const [, force] = React.useReducer(function (x) { return x + 1 }, 0)
+      React.useEffect(function () {
+        cdFocusSubs.push(force)
+        return function () {
+          const i = cdFocusSubs.indexOf(force)
+          if (i >= 0) cdFocusSubs.splice(i, 1)
+        }
+      }, [])
+      return cdFocused
+    })()
+    const [, bump] = React.useReducer(function (x) { return x + 1 }, 0)
+    const [expanded, setExpanded] = React.useState(false)
+    React.useEffect(function () { return cdSubscribe(bump) }, [])
+
+    if (!focused) return null
+    const st = cdState(focused)
+    if (!st) return null
+
+    const remain = cdRemain(st)
+    const total = st.totalMs || 1
+    const ratio = Math.max(0, Math.min(1, remain / total))
+    const accent = st.done ? '#bf8700' : st.paused ? 'rgba(150,150,150,1)' : '#4aa3ff'
+    const R = 84
+    const CIRC = 2 * Math.PI * R
+    const ringSize = expanded ? 320 : 190
+
+    function close() {
+      const cur = cdState(focused)
+      // 「退出」= 暂停并保留进度：以后点行内秒数或 ▶ 都能接着走
+      if (cur && cdRunning(cur)) cdPauseResume(focused)
+      cdFocus(null)
+    }
+
+    const card = {
+      display: 'flex', flexDirection: 'column', alignItems: 'center',
+      gap: expanded ? '22px' : '14px',
+      width: expanded ? '100%' : '100%', maxWidth: expanded ? 'none' : '380px',
+      height: expanded ? '100%' : 'auto',
+      justifyContent: expanded ? 'center' : 'flex-start',
+      padding: expanded ? '32px' : '18px 18px 16px',
+      background: expanded ? 'rgba(20,22,27,0.98)' : 'rgba(26,28,34,0.99)',
+      border: expanded ? 'none' : '1px solid rgba(127,127,127,0.35)',
+      borderRadius: expanded ? '0' : '16px',
+      boxShadow: expanded ? 'none' : '0 20px 56px rgba(0,0,0,0.5)',
+      color: 'inherit',
+    }
+
+    const header = React.createElement('div', { style: { display: 'flex', alignItems: 'center', gap: '8px', width: '100%' } },
+      React.createElement('div', {
+        style: {
+          flex: '1', minWidth: 0, fontSize: expanded ? '22px' : '14px', fontWeight: 600,
+          overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+        },
+        title: st.title || '',
+      }, st.title || '倒计时'),
+      React.createElement('button', {
+        style: CD_ICONBTN,
+        title: expanded ? '还原窗口大小' : '放大占满整个界面',
+        onClick: function () { setExpanded(!expanded) },
+      }, expanded ? '⤡' : '⤢'),
+      React.createElement('button', {
+        style: CD_ICONBTN,
+        title: '关闭（暂停并保留进度，随时可继续）',
+        onClick: close,
+      }, '✕'),
+    )
+
+    const ring = React.createElement('div', {
+      style: {
+        position: 'relative', width: ringSize + 'px', height: ringSize + 'px',
+        display: 'flex', alignItems: 'center', justifyContent: 'center',
+      },
+    },
+      React.createElement('svg', {
+        width: ringSize, height: ringSize, viewBox: '0 0 200 200',
+        style: { position: 'absolute', inset: 0, transform: 'rotate(-90deg)' },
+      },
+        React.createElement('circle', { cx: 100, cy: 100, r: R, fill: 'none', stroke: 'rgba(127,127,127,0.22)', strokeWidth: 9 }),
+        React.createElement('circle', {
+          cx: 100, cy: 100, r: R, fill: 'none', stroke: accent, strokeWidth: 9, strokeLinecap: 'round',
+          strokeDasharray: CIRC.toFixed(2), strokeDashoffset: (CIRC * (1 - ratio)).toFixed(2),
+        }),
+      ),
+      React.createElement('div', { style: { display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '4px' } },
+        React.createElement('div', {
+          style: {
+            fontSize: expanded ? '76px' : '34px', fontWeight: 700, letterSpacing: '1px',
+            fontVariantNumeric: 'tabular-nums', color: accent, lineHeight: 1.05,
+          },
+        }, st.done ? '时间到' : cdText(remain)),
+        React.createElement('div', { style: { fontSize: expanded ? '14px' : '12px', opacity: 0.65 } },
+          st.done ? '这一轮结束了' : st.paused ? '已暂停 · 随时继续' : '坚持'),
+      ),
+    )
+
+    const controls = React.createElement('div', { style: { display: 'flex', gap: '10px', width: '100%' } },
+      st.done
+        ? React.createElement('button', { style: CD_BTN_MAIN, onClick: function () { cdMarkDone(focused) } }, '✓ 完成')
+        : React.createElement('button', { style: CD_BTN_MAIN, onClick: function () { cdPauseResume(focused) } },
+            st.paused ? '▶ 继续' : '⏸ 暂停'),
+      st.done
+        ? React.createElement('button', { style: CD_BTN_SUB, onClick: function () { cdStop(focused) } }, '✕ 收掉')
+        : React.createElement('button', { style: CD_BTN_SUB, onClick: function () { cdStop(focused) } }, '⏹ 结束'),
+    )
+
+    return React.createElement('div', {
+      style: CD_FS,
+      onClick: function (e) { if (e.target === e.currentTarget) close() },
+    }, React.createElement('div', { style: card }, header, ring, controls))
   }
 
   function ScheduleRow(props) {
@@ -394,31 +617,13 @@ function apply(ctx) {
             title: '开始倒计时（' + cd.minutes + ' 分钟）',
             onClick: () => cd.start(),
           }, '▶')
-        : cd.state.done
-          ? React.createElement('button', {
-              style: CD_STYLE_DONE,
-              title: '时间到 —— 点一下标记完成',
-              onClick: () => {
-                cd.stop()
-                if (!done) onMutate('set-done', { id: item.id, date: dateStr, done: true })
-              },
-            }, '⏰✓')
-          : React.createElement('span', {
-              style: cd.state.paused ? CD_STYLE_PAUSED : CD_STYLE_RUN,
-              title: cd.state.paused ? '已暂停' : '倒计时中',
-            },
-              React.createElement('span', null, cdText(cd.state.remainMs)),
-              React.createElement('button', {
-                style: CD_STYLE_ICO,
-                title: cd.state.paused ? '继续' : '暂停',
-                onClick: () => cd.toggle(),
-              }, cd.state.paused ? '▶' : '⏸'),
-              React.createElement('button', {
-                style: CD_STYLE_ICO,
-                title: '结束倒计时',
-                onClick: () => cd.stop(),
-              }, '⏹'),
-            ),
+        : React.createElement('button', {
+            style: cd.state.done ? CD_STYLE_DONE : (cd.state.paused ? CD_STYLE_PAUSED : CD_STYLE_RUN),
+            title: cd.state.done
+              ? '时间到 —— 点开大面板标记完成'
+              : cd.state.paused ? '已暂停 · 点开继续' : '倒计时中 · 点开大面板',
+            onClick: () => cd.open(),
+          }, cd.state.done ? '⏰✓' : cdText(cd.remain) + (cd.state.paused ? ' ⏸' : '')),
       React.createElement('button', {
         className: 'dsh-sched-editbtn',
         title: '编辑日程',
@@ -2274,6 +2479,13 @@ function apply(ctx) {
   slots.inject('shell.overlay', () => slots.register(
     { name: 'shell.overlay', id: 'dsh-schedule-linker' },
     (props) => React.createElement(LinkerOverlay, { sessionId: props && props.sessionId }),
+  ))
+
+  // 大倒计时面板:同样挂在 shell.overlay(root list slot),点行内 ▶ 或秒数即打开,
+  // 右上角 ⤢ 放大到占满整个界面,✕ 关闭时转为暂停并保留进度。
+  slots.inject('shell.overlay', () => slots.register(
+    { name: 'shell.overlay', id: 'dsh-schedule-countdown' },
+    () => React.createElement(CountdownOverlay),
   ))
 
   // 主形态:日程 = better-sidebar 侧边卡片的一个 tab。betterSidebar 已在
