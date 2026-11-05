@@ -54,6 +54,10 @@ const FOCUS_SHIELD_CSS = `
 .dsh-sched-quick-input{width:100%;background:rgba(0,0,0,.2);border:1px dashed rgba(127,127,127,.25);border-radius:8px;padding:6px 10px;font-size:11px;color:inherit;outline:none;box-sizing:border-box;}
 .dsh-sched-quick-input:focus{border-style:solid;border-color:#0969da;}
 .dsh-sched-wins{background:rgba(63,185,80,.05);border:1px solid rgba(63,185,80,.18);border-radius:8px;padding:8px 12px;display:flex;align-items:center;justify-content:space-between;font-size:11px;color:#7ee787;margin-top:6px;}
+.dsh-sched-resources{display:flex;gap:6px;flex-wrap:wrap;align-items:center;margin-top:4px;}
+.dsh-sched-resource-pill{display:inline-flex;align-items:center;gap:4px;background:rgba(74,163,255,.1);border:1px solid rgba(74,163,255,.3);color:#79c0ff;border-radius:12px;padding:3px 9px;font-size:11px;font-weight:500;cursor:pointer;transition:all .15s;max-width:240px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;user-select:none;}
+.dsh-sched-resource-pill:hover{background:rgba(74,163,255,.22);border-color:#79c0ff;transform:translateY(-1px);color:#fff;}
+.dsh-sched-resource-icon{font-size:12px;flex:none;}
 `
 
 const STYLE_ID = "@dsh-schedule/panel.css"
@@ -558,10 +562,23 @@ function apply(ctx) {
         : React.createElement('button', { style: CD_BTN_SUB, onClick: function () { cdStop(focused) } }, '⏹ 结束'),
     )
 
+    // 尝试在底层日程里找到该条目的完整数据(展示关联资料)
+    const activeItem = (function () {
+      if (!focused || !store || !store.data || !Array.isArray(store.data.items)) return null
+      const idPart = focused.replace(CD_PREFIX, '').split('|')[0]
+      return store.data.items.find((it) => it.id === idPart) || null
+    })()
+
+    const resourcePillBar = activeItem && getResourcesOfItem(activeItem).length > 0
+      ? React.createElement('div', { style: { display: 'flex', justifyContent: 'center', width: '100%', margin: '4px 0' } },
+          React.createElement(ResourcePills, { resources: getResourcesOfItem(activeItem) })
+        )
+      : null
+
     return React.createElement('div', {
       style: CD_FS,
       onClick: function (e) { if (e.target === e.currentTarget) close() },
-    }, React.createElement('div', { style: card }, header, ring, controls))
+    }, React.createElement('div', { style: card }, header, ring, resourcePillBar, controls))
   }
 
   // ---- 伴工 (大肥鱼) 存储与组件 ----
@@ -609,6 +626,66 @@ function apply(ctx) {
         ' ✎',
       )
     )
+  }
+
+  function openResourceItem(res) {
+    if (!res || !res.uri) return
+    const uri = String(res.uri).trim()
+    if (uri.startsWith('http://') || uri.startsWith('https://')) {
+      try {
+        window.open(uri, '_blank', 'noopener,noreferrer')
+        return
+      } catch (e) {}
+    }
+    // 本地文件或浏览器拦截弹窗时由宿主端打开
+    call('open-resource', { uri }).catch((err) => {
+      alert('打开资料失败: ' + (err && err.message ? err.message : String(err)))
+    })
+  }
+
+  function getResourcesOfItem(item) {
+    if (!item) return []
+    if (Array.isArray(item.resources) && item.resources.length > 0) {
+      return item.resources
+    }
+    // 兼容宿主端旧进程尚未完全重启时，从扩展字段 resources_cache 读取
+    try {
+      if (store && store.data && store.data.resources_cache && store.data.resources_cache[item.id]) {
+        return store.data.resources_cache[item.id]
+      }
+    } catch (e) {}
+    // 本地缓存备份
+    try {
+      const raw = window.localStorage.getItem('dsh-schedule:res:' + item.id)
+      if (raw) return JSON.parse(raw)
+    } catch (e) {}
+    return []
+  }
+
+  function ResourcePills(props) {
+    const list = Array.isArray(props.resources) ? props.resources : []
+    if (list.length === 0) return null
+    const pills = []
+    for (let i = 0; i < list.length; i++) {
+      const r = list[i]
+      if (!r || !r.uri) continue
+      const icon = inferResourceIcon(r.uri)
+      const title = r.title || inferResourceTitle(r.uri, '')
+      pills.push(React.createElement('div', {
+        key: r.uri + '_' + i,
+        className: 'dsh-sched-resource-pill',
+        onClick: (e) => {
+          e.stopPropagation()
+          openResourceItem(r)
+        },
+        title: '点一下打开：' + r.uri,
+      },
+        React.createElement('span', { className: 'dsh-sched-resource-icon' }, icon),
+        React.createElement('span', null, title),
+        React.createElement('span', { style: { fontSize: '9px', opacity: 0.6 } }, '↗'),
+      ))
+    }
+    return React.createElement('div', { className: 'dsh-sched-resources' }, pills)
   }
 
   function FocusShieldHero(props) {
@@ -661,7 +738,8 @@ function apply(ctx) {
           }, item.title),
           React.createElement('div', { className: 'dsh-sched-hero-note' },
             item.note || (companionName + '已就位，陪你一起啃下这块硬骨头。')
-          )
+          ),
+          React.createElement(ResourcePills, { resources: getResourcesOfItem(item) })
         ),
         React.createElement(CompanionBox, { name: companionName, onRename: onRenameCompanion })
       ),
@@ -1041,6 +1119,64 @@ function apply(ctx) {
         item.note
           ? React.createElement('div', { className: 'dsh-sched-note-full' }, item.note)
           : React.createElement('div', { className: 'dsh-sched-note-empty' }, '无备注'),
+      ),
+      React.createElement('div', { className: 'dsh-sched-section' },
+        React.createElement('div', { className: 'dsh-sched-section-label' }, '📎 关联资料(网课/文件)'),
+        Array.isArray(item.resources) && item.resources.length > 0
+          ? React.createElement('div', { style: { display: 'flex', flexDirection: 'column', gap: '6px' } },
+              item.resources.map((r, idx) => React.createElement('div', {
+                key: r.uri + '_' + idx,
+                style: { display: 'flex', alignItems: 'center', justifyContent: 'space-between', background: 'rgba(255,255,255,0.03)', padding: '5px 8px', borderRadius: '8px' }
+              },
+                React.createElement('div', {
+                  style: { display: 'flex', alignItems: 'center', gap: '6px', cursor: 'pointer', flex: 1, overflow: 'hidden' },
+                  onClick: () => openResourceItem(r),
+                  title: '点击打开: ' + r.uri
+                },
+                  React.createElement('span', null, inferResourceIcon(r.uri)),
+                  React.createElement('span', { style: { fontSize: '12px', color: '#79c0ff', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' } }, r.title || r.uri),
+                  React.createElement('span', { style: { fontSize: '10px', opacity: 0.6 } }, '↗')
+                ),
+                React.createElement('button', {
+                  className: 'dsh-sched-del',
+                  title: '移除该资料',
+                  onClick: () => {
+                    const next = (item.resources || []).filter((_, i) => i !== idx)
+                    onMutate('update', { id: item.id, resources: next })
+                  }
+                }, '✕')
+              ))
+            )
+          : React.createElement('div', { className: 'dsh-sched-note-empty' }, '尚未关联任何资料'),
+        React.createElement('div', { style: { display: 'flex', gap: '6px', marginTop: '4px' } },
+          React.createElement('input', {
+            className: 'dsh-sched-input',
+            style: { fontSize: '12px', padding: '4px 8px' },
+            placeholder: '粘贴网页网址 (如 B站) 或 本地文件路径 (如 D:\\大物.pptx)',
+            id: 'dsh_new_res_input_' + item.id,
+            onKeyDown: (e) => {
+              if (e.key === 'Enter' && e.target.value.trim()) {
+                const u = e.target.value.trim()
+                const next = (item.resources || []).concat([{ title: inferResourceTitle(u, ''), uri: u }])
+                onMutate('update', { id: item.id, resources: next })
+                e.target.value = ''
+              }
+            }
+          }),
+          React.createElement('button', {
+            className: 'dsh-sched-abtn',
+            style: { padding: '4px 8px', fontSize: '11px', flex: 'none' },
+            onClick: () => {
+              const inp = document.getElementById('dsh_new_res_input_' + item.id)
+              if (inp && inp.value.trim()) {
+                const u = inp.value.trim()
+                const next = (item.resources || []).concat([{ title: inferResourceTitle(u, ''), uri: u }])
+                onMutate('update', { id: item.id, resources: next })
+                inp.value = ''
+              }
+            }
+          }, '+ 添加')
+        )
       ),
       React.createElement('div', { className: 'dsh-sched-section' },
         React.createElement('div', { className: 'dsh-sched-section-label' }, '关联会话'),
