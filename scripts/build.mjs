@@ -22,6 +22,11 @@ const libNotify = join(lib, 'notify')
 rmSync(libNotify, { recursive: true, force: true })
 cpSync(join(root, 'src', 'notify'), libNotify, { recursive: true })
 
+// assets/ 静态资源(伴工视频等)
+const libAssets = join(lib, 'assets')
+rmSync(libAssets, { recursive: true, force: true })
+cpSync(join(root, 'assets'), libAssets, { recursive: true })
+
 // ---- Client (C6 bundle) ----
 // 先内联纯逻辑(logic.cjs,无导出副作用),再内联 UI 半身,
 // 两者共享同一个工厂闭包作用域。

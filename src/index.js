@@ -16,6 +16,9 @@
  * 数据长期保存在 ~/.dsh/dsh-schedule-data.json(首次启动自动迁移旧文件)。
  */
 
+import { createReadStream, existsSync, statSync } from 'node:fs'
+import { dirname, join } from 'node:path'
+import { fileURLToPath } from 'node:url'
 import { defineTool } from '@deepseek-ai/dsh-tools'
 import { ScheduleStore } from './store.js'
 import { startReminder } from './notify/index.js'
@@ -433,6 +436,23 @@ export function apply(ctx) {
     route('/doc-patch', async (req, res) => {
       const body = await readBody(req)
       json(res, await store.docPatch(body))
+    })
+
+    // ---- 伴工视频静态端点 ----
+    route('/companion-video', (_req, res) => {
+      const videoPath = join(dirname(fileURLToPath(import.meta.url)), '..', 'assets', 'companion-near.mp4')
+      if (!existsSync(videoPath)) {
+        res.writeHead(404, { 'content-type': 'text/plain' })
+        res.end('Not Found')
+        return
+      }
+      const stat = statSync(videoPath)
+      res.writeHead(200, {
+        'content-type': 'video/mp4',
+        'content-length': stat.size,
+        'cache-control': 'public, max-age=86400',
+      })
+      createReadStream(videoPath).pipe(res)
     })
   })
 
