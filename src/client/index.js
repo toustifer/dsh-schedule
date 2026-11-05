@@ -648,10 +648,10 @@ function apply(ctx) {
     if (Array.isArray(item.resources) && item.resources.length > 0) {
       return item.resources
     }
-    // 兼容宿主端旧进程尚未完全重启时，从扩展字段 resources_cache 读取
+    // 从扩展字段 task_resources 读取
     try {
-      if (store && store.data && store.data.resources_cache && store.data.resources_cache[item.id]) {
-        return store.data.resources_cache[item.id]
+      if (store && store.data && store.data.task_resources && store.data.task_resources[item.id]) {
+        return store.data.task_resources[item.id]
       }
     } catch (e) {}
     // 本地缓存备份
@@ -660,6 +660,20 @@ function apply(ctx) {
       if (raw) return JSON.parse(raw)
     } catch (e) {}
     return []
+  }
+
+  function saveResourcesOfItem(itemId, list, onMutate) {
+    const cleanList = normalizeResourceList(list)
+    try {
+      window.localStorage.setItem('dsh-schedule:res:' + itemId, JSON.stringify(cleanList))
+    } catch (e) {}
+    // 同时持久化到扩展字段与 patch
+    try {
+      call('doc-patch', { set: { task_resources: Object.assign({}, (store.data && store.data.task_resources) || {}, { [itemId]: cleanList }) } })
+    } catch (e) {}
+    if (typeof onMutate === 'function') {
+      onMutate('update', { id: itemId, resources: cleanList })
+    }
   }
 
   function ResourcePills(props) {
@@ -1122,32 +1136,35 @@ function apply(ctx) {
       ),
       React.createElement('div', { className: 'dsh-sched-section' },
         React.createElement('div', { className: 'dsh-sched-section-label' }, '📎 关联资料(网课/文件)'),
-        Array.isArray(item.resources) && item.resources.length > 0
-          ? React.createElement('div', { style: { display: 'flex', flexDirection: 'column', gap: '6px' } },
-              item.resources.map((r, idx) => React.createElement('div', {
-                key: r.uri + '_' + idx,
-                style: { display: 'flex', alignItems: 'center', justifyContent: 'space-between', background: 'rgba(255,255,255,0.03)', padding: '5px 8px', borderRadius: '8px' }
-              },
-                React.createElement('div', {
-                  style: { display: 'flex', alignItems: 'center', gap: '6px', cursor: 'pointer', flex: 1, overflow: 'hidden' },
-                  onClick: () => openResourceItem(r),
-                  title: '点击打开: ' + r.uri
+        (function () {
+          const currentRes = getResourcesOfItem(item)
+          return currentRes.length > 0
+            ? React.createElement('div', { style: { display: 'flex', flexDirection: 'column', gap: '6px' } },
+                currentRes.map((r, idx) => React.createElement('div', {
+                  key: r.uri + '_' + idx,
+                  style: { display: 'flex', alignItems: 'center', justifyContent: 'space-between', background: 'rgba(255,255,255,0.03)', padding: '5px 8px', borderRadius: '8px' }
                 },
-                  React.createElement('span', null, inferResourceIcon(r.uri)),
-                  React.createElement('span', { style: { fontSize: '12px', color: '#79c0ff', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' } }, r.title || r.uri),
-                  React.createElement('span', { style: { fontSize: '10px', opacity: 0.6 } }, '↗')
-                ),
-                React.createElement('button', {
-                  className: 'dsh-sched-del',
-                  title: '移除该资料',
-                  onClick: () => {
-                    const next = (item.resources || []).filter((_, i) => i !== idx)
-                    onMutate('update', { id: item.id, resources: next })
-                  }
-                }, '✕')
-              ))
-            )
-          : React.createElement('div', { className: 'dsh-sched-note-empty' }, '尚未关联任何资料'),
+                  React.createElement('div', {
+                    style: { display: 'flex', alignItems: 'center', gap: '6px', cursor: 'pointer', flex: 1, overflow: 'hidden' },
+                    onClick: () => openResourceItem(r),
+                    title: '点击打开: ' + r.uri
+                  },
+                    React.createElement('span', null, inferResourceIcon(r.uri)),
+                    React.createElement('span', { style: { fontSize: '12px', color: '#79c0ff', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' } }, r.title || r.uri),
+                    React.createElement('span', { style: { fontSize: '10px', opacity: 0.6 } }, '↗')
+                  ),
+                  React.createElement('button', {
+                    className: 'dsh-sched-del',
+                    title: '移除该资料',
+                    onClick: () => {
+                      const next = currentRes.filter((_, i) => i !== idx)
+                      saveResourcesOfItem(item.id, next, onMutate)
+                    }
+                  }, '✕')
+                ))
+              )
+            : React.createElement('div', { className: 'dsh-sched-note-empty' }, '尚未关联任何资料')
+        })(),
         React.createElement('div', { style: { display: 'flex', gap: '6px', marginTop: '4px' } },
           React.createElement('input', {
             className: 'dsh-sched-input',
@@ -1157,8 +1174,9 @@ function apply(ctx) {
             onKeyDown: (e) => {
               if (e.key === 'Enter' && e.target.value.trim()) {
                 const u = e.target.value.trim()
-                const next = (item.resources || []).concat([{ title: inferResourceTitle(u, ''), uri: u }])
-                onMutate('update', { id: item.id, resources: next })
+                const cur = getResourcesOfItem(item)
+                const next = cur.concat([{ title: inferResourceTitle(u, ''), uri: u }])
+                saveResourcesOfItem(item.id, next, onMutate)
                 e.target.value = ''
               }
             }
@@ -1170,8 +1188,9 @@ function apply(ctx) {
               const inp = document.getElementById('dsh_new_res_input_' + item.id)
               if (inp && inp.value.trim()) {
                 const u = inp.value.trim()
-                const next = (item.resources || []).concat([{ title: inferResourceTitle(u, ''), uri: u }])
-                onMutate('update', { id: item.id, resources: next })
+                const cur = getResourcesOfItem(item)
+                const next = cur.concat([{ title: inferResourceTitle(u, ''), uri: u }])
+                saveResourcesOfItem(item.id, next, onMutate)
                 inp.value = ''
               }
             }
