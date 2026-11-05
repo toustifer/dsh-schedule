@@ -643,10 +643,27 @@ function apply(ctx) {
     })
   }
 
+  function getCleanNoteOfItem(note) {
+    if (typeof note !== 'string') return ''
+    const idx = note.indexOf('\n[resources]:')
+    if (idx !== -1) return note.slice(0, idx).trim()
+    return note
+  }
+
   function getResourcesOfItem(item) {
     if (!item) return []
     if (Array.isArray(item.resources) && item.resources.length > 0) {
       return item.resources
+    }
+    // 兼容从 note 尾部解析 [resources]:[...]
+    if (typeof item.note === 'string') {
+      const match = item.note.match(/\n\[resources\]:(.+)$/)
+      if (match) {
+        try {
+          const parsed = JSON.parse(match[1])
+          if (Array.isArray(parsed) && parsed.length > 0) return parsed
+        } catch (e) {}
+      }
     }
     // 从扩展字段 task_resources 读取
     try {
@@ -662,17 +679,22 @@ function apply(ctx) {
     return []
   }
 
-  function saveResourcesOfItem(itemId, list, onMutate) {
+  function saveResourcesOfItem(item, list, onMutate) {
     const cleanList = normalizeResourceList(list)
     try {
-      window.localStorage.setItem('dsh-schedule:res:' + itemId, JSON.stringify(cleanList))
+      window.localStorage.setItem('dsh-schedule:res:' + item.id, JSON.stringify(cleanList))
     } catch (e) {}
-    // 同时持久化到扩展字段与 patch
+    // 同时持久化到扩展字段
     try {
-      call('doc-patch', { set: { task_resources: Object.assign({}, (store.data && store.data.task_resources) || {}, { [itemId]: cleanList }) } })
+      call('doc-patch', { set: { task_resources: Object.assign({}, (store.data && store.data.task_resources) || {}, { [item.id]: cleanList }) } })
     } catch (e) {}
+    // 同时嵌入 note, 这样旧版本 Host 或刷新后绝对 100% 能读到
+    const baseNote = getCleanNoteOfItem(item.note)
+    const newNote = cleanList.length > 0
+      ? (baseNote ? baseNote + '\n[resources]:' + JSON.stringify(cleanList) : '[resources]:' + JSON.stringify(cleanList))
+      : baseNote
     if (typeof onMutate === 'function') {
-      onMutate('update', { id: itemId, resources: cleanList })
+      onMutate('update', { id: item.id, note: newNote, resources: cleanList })
     }
   }
 
@@ -751,7 +773,7 @@ function apply(ctx) {
             title: '点击查看详情',
           }, item.title),
           React.createElement('div', { className: 'dsh-sched-hero-note' },
-            item.note || (companionName + '已就位，陪你一起啃下这块硬骨头。')
+            getCleanNoteOfItem(item.note) || (companionName + '已就位，陪你一起啃下这块硬骨头。')
           ),
           React.createElement(ResourcePills, { resources: getResourcesOfItem(item) })
         ),
@@ -1130,8 +1152,8 @@ function apply(ctx) {
       React.createElement('div', { className: 'dsh-sched-detail-pills' }, pills),
       React.createElement('div', { className: 'dsh-sched-section' },
         React.createElement('div', { className: 'dsh-sched-section-label' }, '备注'),
-        item.note
-          ? React.createElement('div', { className: 'dsh-sched-note-full' }, item.note)
+        getCleanNoteOfItem(item.note)
+          ? React.createElement('div', { className: 'dsh-sched-note-full' }, getCleanNoteOfItem(item.note))
           : React.createElement('div', { className: 'dsh-sched-note-empty' }, '无备注'),
       ),
       React.createElement('div', { className: 'dsh-sched-section' },
@@ -1158,7 +1180,7 @@ function apply(ctx) {
                     title: '移除该资料',
                     onClick: () => {
                       const next = currentRes.filter((_, i) => i !== idx)
-                      saveResourcesOfItem(item.id, next, onMutate)
+                      saveResourcesOfItem(item, next, onMutate)
                     }
                   }, '✕')
                 ))
@@ -1176,7 +1198,7 @@ function apply(ctx) {
                 const u = e.target.value.trim()
                 const cur = getResourcesOfItem(item)
                 const next = cur.concat([{ title: inferResourceTitle(u, ''), uri: u }])
-                saveResourcesOfItem(item.id, next, onMutate)
+                saveResourcesOfItem(item, next, onMutate)
                 e.target.value = ''
               }
             }
@@ -1190,7 +1212,7 @@ function apply(ctx) {
                 const u = inp.value.trim()
                 const cur = getResourcesOfItem(item)
                 const next = cur.concat([{ title: inferResourceTitle(u, ''), uri: u }])
-                saveResourcesOfItem(item.id, next, onMutate)
+                saveResourcesOfItem(item, next, onMutate)
                 inp.value = ''
               }
             }
@@ -2519,7 +2541,28 @@ function apply(ctx) {
     const [ttOpen, setTtOpen] = React.useState(readTtVisible)
     const [goalPrefill, setGoalPrefill] = React.useState('')
     const [companionName, setCompanionNameState] = React.useState(getCompanionName)
-    const [explicitHighlightId, setExplicitHighlightId] = React.useState(null)
+    const HIGHLIGHT_STORAGE_KEY = 'dsh-schedule:highlight:id'
+    function readInitialHighlightId() {
+      try {
+        const val = window.localStorage.getItem(HIGHLIGHT_STORAGE_KEY)
+        if (val && val.trim()) return val.trim()
+      } catch (e) {}
+      return null
+    }
+
+    const [explicitHighlightId, setExplicitHighlightIdState] = React.useState(readInitialHighlightId)
+
+    function setExplicitHighlightId(id) {
+      setExplicitHighlightIdState(id)
+      try {
+        if (id) window.localStorage.setItem(HIGHLIGHT_STORAGE_KEY, id)
+        else window.localStorage.removeItem(HIGHLIGHT_STORAGE_KEY)
+      } catch (e) {}
+      // 同时也存入 doc-patch, 保证跨端/跨会话持久化
+      try {
+        call('doc-patch', { set: { highlight_id: id } })
+      } catch (e) {}
+    }
     const [drawerCollapsed, setDrawerCollapsed] = React.useState(false)
     const [quickAddText, setQuickAddText] = React.useState('')
 
