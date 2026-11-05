@@ -380,12 +380,13 @@ function apply(ctx) {
     for (const fn of cdFocusSubs.slice()) { try { fn() } catch (e) { /* ignore */ } }
   }
 
-  function cdStart(key, item) {
+  function cdStart(key, item, customMinutes) {
     try {
       if (typeof Notification !== 'undefined' && Notification.permission === 'default') Notification.requestPermission()
     } catch (e) { /* 通知不可用就只靠界面提示 */ }
-    const ms = cdMinutesOf(item) * 60000
-    cdSet(key, { endsAt: Date.now() + ms, totalMs: ms, remainMs: ms, paused: false, done: false, title: item.title })
+    const mins = typeof customMinutes === 'number' && customMinutes > 0 ? customMinutes : cdMinutesOf(item)
+    const ms = mins * 60000
+    cdSet(key, { endsAt: Date.now() + ms, totalMs: ms, remainMs: ms, paused: false, done: false, title: item.title, isMicro: mins === 5 })
     cdFocus(key)
   }
 
@@ -424,7 +425,7 @@ function apply(ctx) {
       state: state,
       minutes: cdMinutesOf(item),
       remain: cdRemain(state),
-      start: function () { cdStart(key, item) },
+      start: function (customMinutes) { cdStart(key, item, customMinutes) },
       toggle: function () { cdPauseResume(key) },
       stop: function () { cdStop(key) },
       open: function () { cdFocus(key) },
@@ -607,6 +608,130 @@ function apply(ctx) {
         React.createElement('span', null, name),
         ' ✎',
       )
+    )
+  }
+
+  function FocusShieldHero(props) {
+    const { item, today, companionName, onRenameCompanion, onMutate, onOpenDetail } = props
+    if (!item) {
+      return React.createElement('div', { className: 'dsh-sched-hero' },
+        React.createElement('div', { className: 'dsh-sched-hero-top' },
+          React.createElement('div', { className: 'dsh-sched-hero-info' },
+            React.createElement('div', { className: 'dsh-sched-hero-tag' }, '✨ 今日清爽'),
+            React.createElement('div', { className: 'dsh-sched-hero-title' }, '今天所有核心怪兽已击倒！'),
+            React.createElement('div', { className: 'dsh-sched-hero-note' }, companionName + '正在旁边优哉游哉休息，享受当下的轻松时光吧。')
+          ),
+          React.createElement(CompanionBox, { name: companionName, onRename: onRenameCompanion })
+        ),
+        React.createElement('div', { className: 'dsh-sched-dialogue' },
+          '今天表现超神！' + companionName + '随时陪你开启下一个新挑战。'
+        )
+      )
+    }
+
+    const cdKey = CD_PREFIX + item.id + '|' + today
+    const cd = useCountdown(cdKey, item)
+    const mins = cdMinutesOf(item)
+
+    const qThemeTags = {
+      q1: '⚡ #硬核攻坚 · 今日主角',
+      q2: '🌱 #关键突破 · 今日主角',
+      q3: '🏃 #敏捷清理 · 今日主角',
+      q4: '☕ #随性拾遗 · 今日主角',
+    }
+    const tag = qThemeTags[item.quadrant] || '⚡ #今日主角'
+
+    const dialogueText = cd.state && !cd.state.done
+      ? (cd.state.paused
+          ? '进度帮你封存好啦，喝口水伸个懒腰，' + companionName + '等你回来～'
+          : (cd.state.isMicro
+              ? '冲 5 分钟就撤！' + companionName + '戴好拳套陪你并肩破冰！'
+              : '深海心流护盾开启！外面吵吵闹闹的都交给我挡着！'))
+      : ('我在呢，今天想先攻哪一小步？' + companionName + '陪你。')
+
+    return React.createElement('div', { className: 'dsh-sched-hero' },
+      React.createElement('div', { className: 'dsh-sched-hero-top' },
+        React.createElement('div', { className: 'dsh-sched-hero-info' },
+          React.createElement('div', { className: 'dsh-sched-hero-tag' }, tag),
+          React.createElement('div', {
+            className: 'dsh-sched-hero-title',
+            style: { cursor: 'pointer' },
+            onClick: () => onOpenDetail(item.id),
+            title: '点击查看详情',
+          }, item.title),
+          React.createElement('div', { className: 'dsh-sched-hero-note' },
+            item.note || (companionName + '已就位，陪你一起啃下这块硬骨头。')
+          )
+        ),
+        React.createElement(CompanionBox, { name: companionName, onRename: onRenameCompanion })
+      ),
+      React.createElement('div', { className: 'dsh-sched-dialogue' }, dialogueText),
+      cd.state !== null
+        ? React.createElement('div', {
+            style: {
+              display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+              background: 'rgba(0,0,0,0.25)', padding: '8px 12px', borderRadius: '10px',
+              border: '1px solid ' + (cd.state.done ? '#bf8700' : cd.state.paused ? 'rgba(127,127,127,0.4)' : '#0969da'),
+            }
+          },
+            React.createElement('div', { style: { display: 'flex', alignItems: 'center', gap: '8px' } },
+              React.createElement('span', {
+                style: {
+                  fontSize: '22px', fontWeight: 700, fontVariantNumeric: 'tabular-nums',
+                  color: cd.state.done ? '#bf8700' : cd.state.paused ? 'rgba(127,127,127,0.9)' : '#4aa3ff',
+                }
+              }, cd.state.done ? '时间到！🎉' : cdText(cd.remain)),
+              React.createElement('span', { style: { fontSize: '11px', opacity: 0.7 } },
+                cd.state.done ? '大胜拿下！' : cd.state.paused ? '已暂停' : (cd.state.isMicro ? '微破冰中' : '专注心流中')
+              )
+            ),
+            React.createElement('div', { style: { display: 'flex', gap: '6px' } },
+              cd.state.done
+                ? React.createElement('button', {
+                    className: 'dsh-sched-hero-btn-main',
+                    style: { padding: '5px 12px', background: '#2da44e' },
+                    onClick: () => {
+                      cd.stop()
+                      onMutate('set-done', { id: item.id, date: today, done: true })
+                    }
+                  }, '✓ 击倒怪物')
+                : React.createElement('button', {
+                    className: 'dsh-sched-hero-btn-main',
+                    style: { padding: '5px 10px' },
+                    onClick: () => cd.toggle()
+                  }, cd.state.paused ? '▶ 继续' : '⏸ 暂停'),
+              cd.state.done ? null : React.createElement('button', {
+                className: 'dsh-sched-hero-btn-micro',
+                style: { padding: '5px 8px', color: 'inherit', borderColor: 'rgba(127,127,127,0.3)' },
+                onClick: () => cd.open(),
+                title: '打开大面板',
+              }, '⤢ 放大'),
+              React.createElement('button', {
+                className: 'dsh-sched-hero-btn-micro',
+                style: { padding: '5px 8px', color: 'inherit', borderColor: 'rgba(127,127,127,0.3)' },
+                onClick: () => cd.stop(),
+                title: '结束倒计时',
+              }, '⏹')
+            )
+          )
+        : React.createElement('div', { className: 'dsh-sched-hero-btns' },
+            React.createElement('button', {
+              className: 'dsh-sched-hero-btn-main',
+              onClick: () => cd.start(),
+              title: '开启深度专注倒计时',
+            },
+              React.createElement('span', null, '▶'),
+              ' 开始专注 (' + mins + 'm)'
+            ),
+            React.createElement('button', {
+              className: 'dsh-sched-hero-btn-micro',
+              onClick: () => cd.start(5),
+              title: '5 分钟微破冰点火：毫无压力，只看一眼题目就放行！',
+            },
+              React.createElement('span', null, '🌱'),
+              ' 先做5分钟 (微破冰)'
+            )
+          )
     )
   }
 
@@ -2238,6 +2363,18 @@ function apply(ctx) {
     const [goalsBarOpen, setGoalsBarOpen] = React.useState(readGoalsBarVisible)
     const [ttOpen, setTtOpen] = React.useState(readTtVisible)
     const [goalPrefill, setGoalPrefill] = React.useState('')
+    const [companionName, setCompanionNameState] = React.useState(getCompanionName)
+    const [explicitHighlightId, setExplicitHighlightId] = React.useState(null)
+    const [drawerCollapsed, setDrawerCollapsed] = React.useState(false)
+    const [quickAddText, setQuickAddText] = React.useState('')
+
+    function handleRenameCompanion() {
+      const next = prompt('输入你喜欢的伴工名字：', companionName)
+      if (next !== null && next.trim() !== '') {
+        const saved = setCompanionName(next)
+        setCompanionNameState(saved)
+      }
+    }
     const currentSessionId = getActiveSessionId(props)
     // 本面板只作为 better-sidebar 的侧边卡片渲染;visible 由宿主控制,
     // 面板可见期间每 30 秒拉一次数据(其他会话里 agent 工具改了日程也能看到)。
@@ -2322,14 +2459,90 @@ function apply(ctx) {
       const rows = rowsFor(data, today)
       const todo = rows.filter((r) => !r.done)
       const done = rows.filter((r) => r.done)
-      const rowEls = []
-      for (let i = 0; i < todo.length; i++) {
-        rowEls.push(React.createElement(ScheduleRow, {
-          key: todo[i].item.id, item: todo[i].item, dateStr: today, done: false,
-          currentSessionId: currentSessionId, onMutate: onMutate,
-          onOpenDetail: openDetail, onOpenEdit: openEdit,
-        }))
+
+      // 1. 今日主角 (Focus Shield)
+      const highlight = pickDailyHighlight(todo.map((r) => r.item), data ? data.done : {}, today, explicitHighlightId)
+      const heroEl = React.createElement(FocusShieldHero, {
+        item: highlight,
+        today: today,
+        companionName: companionName,
+        onRenameCompanion: handleRenameCompanion,
+        onMutate: onMutate,
+        onOpenDetail: openDetail,
+      })
+
+      // 2. 副任务与灵感仓 (Backlog Drawer)
+      const backlog = todo.filter((r) => !highlight || r.item.id !== highlight.id)
+      const backlogRowEls = []
+      for (let i = 0; i < backlog.length; i++) {
+        const bItem = backlog[i].item
+        backlogRowEls.push(React.createElement('div', {
+          key: bItem.id,
+          style: {
+            display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+            padding: '6px 8px', borderRadius: '8px', background: 'rgba(255,255,255,0.02)',
+            gap: '8px',
+          }
+        },
+          React.createElement('span', {
+            style: { flex: 1, minWidth: 0, fontSize: '13px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', cursor: 'pointer' },
+            onClick: () => openDetail(bItem.id),
+            title: bItem.title,
+          }, bItem.title),
+          React.createElement('div', { style: { display: 'flex', gap: '4px', flex: 'none' } },
+            React.createElement('button', {
+              className: 'dsh-sched-star-btn',
+              title: '把这条设为今日主角',
+              onClick: () => setExplicitHighlightId(bItem.id),
+            }, '⭐ 设为主任务'),
+            React.createElement('button', {
+              className: 'dsh-sched-star-btn',
+              title: '直接开启倒计时',
+              onClick: () => cdStart(CD_PREFIX + bItem.id + '|' + today, bItem),
+            }, '▶ ' + cdMinutesOf(bItem) + 'm')
+          )
+        ))
       }
+
+      const drawerEl = React.createElement('div', { className: 'dsh-sched-drawer' },
+        React.createElement('div', {
+          className: 'dsh-sched-drawer-head',
+          onClick: () => setDrawerCollapsed(!drawerCollapsed),
+        },
+          React.createElement('span', null,
+            '📥 副任务与灵感仓',
+            React.createElement('span', { className: 'dsh-sched-drawer-cnt' }, backlog.length),
+          ),
+          React.createElement('span', { style: { fontSize: '11px', color: 'rgba(127,127,127,0.7)' } },
+            drawerCollapsed ? '展开 ▼' : '收纳中 ▲'
+          )
+        ),
+        drawerCollapsed ? null : (
+          backlogRowEls.length > 0 ? React.createElement('div', { style: { display: 'flex', flexDirection: 'column', gap: '6px' } }, backlogRowEls) : null
+        ),
+        React.createElement('input', {
+          className: 'dsh-sched-quick-input',
+          placeholder: '+ 记一个灵感或琐事 (按回车丢进仓里，不排时间，绝不催你)',
+          value: quickAddText,
+          onChange: (e) => setQuickAddText(e.target.value),
+          onKeyDown: (e) => {
+            if (e.key === 'Enter' && quickAddText.trim()) {
+              onMutate('add', { title: quickAddText.trim(), recurring: 'once', date: today, quadrant: 'q4' })
+              setQuickAddText('')
+            }
+          }
+        })
+      )
+
+      // 3. 零羞耻战报 (Zero-Shame Wins)
+      const winsEl = React.createElement('div', { className: 'dsh-sched-wins' },
+        React.createElement('span', null, '🎉 今日战报：' + companionName + '为你点赞！已击倒 ' + done.length + ' 个目标'),
+        React.createElement('span', { style: { fontSize: '10px', opacity: 0.8 } },
+          done.length > 0 ? '最近：' + done[done.length - 1].item.title : '随时开始'
+        )
+      )
+
+      // 4. 已完成折叠区
       const doneEls = []
       for (let i = 0; i < done.length; i++) {
         doneEls.push(React.createElement(ScheduleRow, {
@@ -2338,12 +2551,18 @@ function apply(ctx) {
           onOpenDetail: openDetail, onOpenEdit: openEdit,
         }))
       }
+
       body = React.createElement('div', null,
-        rowEls.length === 0 && doneEls.length === 0 ? React.createElement('div', { className: 'dsh-sched-empty' }, '今天没有日程 🎉') : null,
-        rowEls,
-        doneEls.length > 0 ? React.createElement('div', { className: 'dsh-sched-donesum', onClick: () => setDoneCollapsed(!doneCollapsed) },
+        heroEl,
+        drawerEl,
+        winsEl,
+        doneEls.length > 0 ? React.createElement('div', {
+          className: 'dsh-sched-donesum',
+          style: { marginTop: '8px' },
+          onClick: () => setDoneCollapsed(!doneCollapsed)
+        },
           React.createElement('span', null, doneCollapsed ? '▸' : '▾'),
-          React.createElement('span', null, '已完成 (' + doneEls.length + ')'),
+          React.createElement('span', null, '已完成清单 (' + doneEls.length + ')'),
         ) : null,
         doneCollapsed ? null : doneEls,
       )
