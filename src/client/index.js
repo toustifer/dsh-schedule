@@ -569,16 +569,52 @@ function apply(ctx) {
       return store.data.items.find((it) => it.id === idPart) || null
     })()
 
-    const resourcePillBar = activeItem && getResourcesOfItem(activeItem).length > 0
-      ? React.createElement('div', { style: { display: 'flex', justifyContent: 'center', width: '100%', margin: '4px 0' } },
-          React.createElement(ResourcePills, { resources: getResourcesOfItem(activeItem) })
+    const activeResources = activeItem ? getResourcesOfItem(activeItem) : []
+    const cleanNote = activeItem ? getCleanNoteOfItem(activeItem.note) : ''
+
+    const infoBox = activeItem
+      ? React.createElement('div', {
+          style: {
+            display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '8px',
+            width: '100%', maxWidth: expanded ? '560px' : '100%', margin: '4px 0',
+          }
+        },
+          cleanNote
+            ? React.createElement('div', {
+                style: {
+                  fontSize: expanded ? '13px' : '11px',
+                  color: 'rgba(255,255,255,0.7)',
+                  background: 'rgba(255,255,255,0.04)',
+                  padding: expanded ? '8px 16px' : '6px 10px',
+                  borderRadius: '8px',
+                  textAlign: 'center',
+                  lineHeight: '1.4',
+                  maxWidth: '100%',
+                  wordBreak: 'break-word',
+                }
+              }, cleanNote)
+            : null,
+          activeResources.length > 0
+            ? React.createElement('div', {
+                style: {
+                  display: 'flex',
+                  justifyContent: 'center',
+                  alignItems: 'center',
+                  gap: '8px',
+                  flexWrap: 'wrap',
+                  width: '100%',
+                }
+              },
+                React.createElement(ResourcePills, { resources: activeResources })
+              )
+            : null
         )
       : null
 
     return React.createElement('div', {
       style: CD_FS,
       onClick: function (e) { if (e.target === e.currentTarget) close() },
-    }, React.createElement('div', { style: card }, header, ring, resourcePillBar, controls))
+    }, React.createElement('div', { style: card }, header, ring, infoBox, controls))
   }
 
   // ---- 伴工 (大肥鱼) 存储与组件 ----
