@@ -4,7 +4,7 @@
  *   - Client 半身(src/client/index.js)包装为 DSH client-modules C6 bundle
  *     (window.__ModuleLoader__.load 工厂),产出 lib/client.js
  */
-import { copyFileSync, cpSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { copyFileSync, cpSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
@@ -28,12 +28,16 @@ rmSync(libAssets, { recursive: true, force: true })
 cpSync(join(root, 'assets'), libAssets, { recursive: true })
 
 // ---- Client (C6 bundle) ----
-// 先内联纯逻辑(logic.cjs,无导出副作用),再内联 UI 半身,
+// 先内联纯逻辑(logic.cjs,无导出副作用),再内联静态伴工资产,再内联 UI 半身,
 // 两者共享同一个工厂闭包作用域。
 const logicSrc = readFileSync(join(root, 'src', 'client', 'logic.cjs'), 'utf8')
+const assetPath = join(root, 'src', 'client', 'companion-asset.cjs')
+const assetSrc = existsSync(assetPath)
+  ? readFileSync(assetPath, 'utf8')
+  : 'const COMPANION_VIDEO_SRC = "/api/dailytask/companion-video";\n'
 const clientSrc = readFileSync(join(root, 'src', 'client', 'index.js'), 'utf8')
 const banner = 'window.__ModuleLoader__.load({ id: "dsh-schedule", factory: (require) => { var module = { exports: {} }; var exports = module.exports;\n'
 const footer = '\nreturn module.exports; } });\n'
-writeFileSync(join(lib, 'client.js'), banner + logicSrc + '\n' + clientSrc + footer)
+writeFileSync(join(lib, 'client.js'), banner + logicSrc + '\n' + assetSrc + '\n' + clientSrc + footer)
 
 console.log('[dsh-schedule] build ok -> lib/index.js, lib/store.js, lib/client.js')

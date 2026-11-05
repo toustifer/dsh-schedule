@@ -1,0 +1,607 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>dsh-schedule · ADHD 专注盾牌 + 大肥鱼(支持改名)</title>
+  <style>
+    :root {
+      --bg: #121418;
+      --card-bg: #1a1d24;
+      --card-border: rgba(255, 255, 255, 0.08);
+      --card-hover: rgba(255, 255, 255, 0.12);
+      --text-main: #f0f2f5;
+      --text-muted: #8b949e;
+      --primary: #4aa3ff;
+      --primary-bg: rgba(74, 163, 255, 0.12);
+      --primary-border: rgba(74, 163, 255, 0.35);
+      --green: #3fb950;
+      --green-bg: rgba(63, 185, 80, 0.12);
+      --green-border: rgba(63, 185, 80, 0.35);
+      --accent: #d29922;
+      --radius-lg: 16px;
+      --radius-md: 10px;
+      --radius-sm: 6px;
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
+    body {
+      background: var(--bg);
+      color: var(--text-main);
+      padding: 24px;
+      display: flex;
+      justify-content: center;
+      min-height: 100vh;
+    }
+
+    .panel {
+      width: 100%;
+      max-width: 440px;
+      display: flex;
+      flex-direction: column;
+      gap: 18px;
+    }
+
+    /* 顶部导航 */
+    .nav-bar {
+      display: flex;
+      background: rgba(255, 255, 255, 0.04);
+      padding: 4px;
+      border-radius: var(--radius-md);
+      gap: 4px;
+    }
+    .nav-item {
+      flex: 1;
+      text-align: center;
+      padding: 6px 0;
+      font-size: 13px;
+      color: var(--text-muted);
+      border-radius: var(--radius-sm);
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+    .nav-item.active {
+      background: var(--card-bg);
+      color: var(--text-main);
+      font-weight: 600;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.3);
+    }
+
+    /* 今日主角 / Focus Shield 卡片 */
+    .hero-card {
+      background: linear-gradient(180deg, #1f242e 0%, #171a21 100%);
+      border: 1px solid var(--primary-border);
+      border-radius: var(--radius-lg);
+      padding: 20px;
+      box-shadow: 0 12px 32px rgba(0, 0, 0, 0.4), 0 0 24px rgba(74, 163, 255, 0.08);
+      display: flex;
+      flex-direction: column;
+      gap: 14px;
+      position: relative;
+      overflow: hidden;
+    }
+    .hero-card::before {
+      content: "";
+      position: absolute;
+      top: 0; left: 0; right: 0; height: 3px;
+      background: linear-gradient(90deg, #4aa3ff, #79c0ff, #58a6ff);
+    }
+
+    .hero-header-flex {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+      gap: 12px;
+    }
+
+    .hero-theme-tag {
+      font-size: 11px;
+      font-weight: 600;
+      color: var(--primary);
+      background: var(--primary-bg);
+      padding: 3px 8px;
+      border-radius: 12px;
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      border: 1px solid rgba(74, 163, 255, 0.2);
+    }
+
+    .hero-title {
+      font-size: 20px;
+      font-weight: 700;
+      color: #fff;
+      line-height: 1.3;
+      margin-top: 6px;
+    }
+    .hero-note {
+      font-size: 12px;
+      color: var(--text-muted);
+      line-height: 1.5;
+    }
+
+    /* 伴侣视窗 (3D 视频) */
+    .xiaodian-box {
+      width: 96px;
+      height: 128px;
+      border-radius: 14px;
+      overflow: hidden;
+      position: relative;
+      flex: none;
+      box-shadow: 0 8px 20px rgba(0,0,0,0.5), 0 0 12px rgba(74, 163, 255, 0.2);
+      border: 1.5px solid rgba(74, 163, 255, 0.4);
+      background: #0d0f12;
+      cursor: pointer;
+      transition: transform 0.25s cubic-bezier(0.34, 1.56, 0.64, 1);
+    }
+    .xiaodian-box:hover {
+      transform: scale(1.05);
+      border-color: #79c0ff;
+    }
+    .xiaodian-video {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+      object-position: center 18%;
+      display: block;
+    }
+    .xiaodian-badge {
+      position: absolute;
+      bottom: 4px;
+      left: 50%;
+      transform: translateX(-50%);
+      background: rgba(13, 15, 18, 0.88);
+      backdrop-filter: blur(4px);
+      padding: 2px 7px;
+      border-radius: 8px;
+      font-size: 10px;
+      font-weight: 600;
+      color: #79c0ff;
+      border: 1px solid rgba(74, 163, 255, 0.35);
+      white-space: nowrap;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      gap: 3px;
+    }
+    .xiaodian-badge:hover {
+      background: #0969da;
+      color: #fff;
+    }
+
+    /* 陪伴对话气泡 */
+    .xiaodian-dialogue {
+      background: rgba(74, 163, 255, 0.08);
+      border: 1px solid rgba(74, 163, 255, 0.2);
+      border-radius: var(--radius-md);
+      padding: 8px 12px;
+      font-size: 12px;
+      color: #dcebfa;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      margin-top: -2px;
+    }
+    .xiaodian-dialogue::before {
+      content: "💬";
+      font-size: 14px;
+    }
+
+    /* 倒计时交互区 */
+    .hero-timer-display {
+      display: none;
+      flex-direction: column;
+      align-items: center;
+      gap: 6px;
+      padding: 10px 0;
+    }
+    .timer-digits {
+      font-size: 42px;
+      font-weight: 700;
+      letter-spacing: 1px;
+      font-variant-numeric: tabular-nums;
+      color: var(--primary);
+      text-shadow: 0 0 20px rgba(74, 163, 255, 0.3);
+    }
+    .timer-hint {
+      font-size: 12px;
+      color: #7ee787;
+      background: rgba(63, 185, 80, 0.1);
+      padding: 3px 10px;
+      border-radius: 12px;
+      border: 1px solid rgba(63, 185, 80, 0.2);
+    }
+
+    /* 主角按钮组 */
+    .hero-actions {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 10px;
+      margin-top: 4px;
+    }
+    .btn {
+      border: none;
+      border-radius: var(--radius-md);
+      padding: 10px 14px;
+      font-size: 13px;
+      font-weight: 600;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 6px;
+      transition: all 0.2s;
+    }
+    .btn-focus {
+      background: #0969da;
+      color: #fff;
+      box-shadow: 0 4px 14px rgba(9, 105, 218, 0.4);
+    }
+    .btn-focus:hover { background: #1177ee; transform: translateY(-1px); }
+
+    .btn-micro {
+      background: var(--green-bg);
+      color: #7ee787;
+      border: 1px solid var(--green-border);
+    }
+    .btn-micro:hover { background: rgba(63, 185, 80, 0.2); transform: translateY(-1px); }
+
+    /* 副任务收纳区 */
+    .drawer-section {
+      background: var(--card-bg);
+      border: 1px solid var(--card-border);
+      border-radius: var(--radius-lg);
+      padding: 16px;
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+    }
+    .drawer-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      cursor: pointer;
+      user-select: none;
+    }
+    .drawer-title {
+      font-size: 13px;
+      font-weight: 600;
+      color: var(--text-muted);
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+    .drawer-counter {
+      background: rgba(255, 255, 255, 0.08);
+      font-size: 11px;
+      padding: 1px 6px;
+      border-radius: 10px;
+    }
+
+    .task-list {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+    .task-item {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 10px 12px;
+      background: rgba(255, 255, 255, 0.02);
+      border: 1px solid rgba(255, 255, 255, 0.04);
+      border-radius: var(--radius-md);
+      gap: 8px;
+      transition: all 0.15s;
+    }
+    .task-item:hover {
+      background: rgba(255, 255, 255, 0.05);
+      border-color: rgba(255, 255, 255, 0.08);
+    }
+    .task-title {
+      font-size: 13px;
+      color: var(--text-main);
+      flex: 1;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .task-actions {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+    .btn-pin {
+      background: transparent;
+      border: 1px solid rgba(255, 255, 255, 0.15);
+      color: var(--text-muted);
+      font-size: 11px;
+      padding: 3px 8px;
+      border-radius: var(--radius-sm);
+      cursor: pointer;
+    }
+    .btn-pin:hover { border-color: #f1e05a; color: #f1e05a; }
+    .btn-play-mini {
+      background: transparent;
+      border: 1px solid rgba(255, 255, 255, 0.15);
+      color: var(--text-muted);
+      font-size: 11px;
+      padding: 3px 8px;
+      border-radius: var(--radius-sm);
+      cursor: pointer;
+    }
+    .btn-play-mini:hover { border-color: var(--primary); color: var(--primary); }
+
+    .quick-add {
+      display: flex;
+      gap: 6px;
+      margin-top: 4px;
+    }
+    .quick-input {
+      flex: 1;
+      background: rgba(0, 0, 0, 0.2);
+      border: 1px dashed rgba(255, 255, 255, 0.15);
+      border-radius: var(--radius-md);
+      padding: 8px 12px;
+      font-size: 12px;
+      color: var(--text-main);
+      outline: none;
+    }
+    .quick-input:focus { border-style: solid; border-color: var(--primary); }
+
+    /* 正向战报区 (Zero Shame) */
+    .wins-section {
+      background: rgba(63, 185, 80, 0.04);
+      border: 1px solid rgba(63, 185, 80, 0.15);
+      border-radius: var(--radius-md);
+      padding: 12px 16px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      font-size: 12px;
+      color: #7ee787;
+    }
+    .wins-detail {
+      font-size: 11px;
+      color: var(--text-muted);
+    }
+  </style>
+</head>
+<body>
+
+  <div class="panel">
+    <!-- 顶部导航 -->
+    <div class="nav-bar">
+      <div class="nav-item active">今天 · 专注</div>
+      <div class="nav-item">四象限</div>
+      <div class="nav-item">时间轴</div>
+      <div class="nav-item">本周</div>
+      <div class="nav-item">历史</div>
+    </div>
+
+    <!-- 1. 今日主角卡片 (Focus Shield + 大肥鱼) -->
+    <div class="hero-card" id="heroCard">
+      <div class="hero-header-flex">
+        <div style="flex: 1;">
+          <div class="hero-theme-tag" id="heroTag">⚡ #硬核攻坚 · 今日主角</div>
+          <div class="hero-title" id="heroTitle">大物复习 40 分钟</div>
+          <div class="hero-note" id="heroNote" style="margin-top: 6px;">期中在 11-22；考前每天 40 分钟。<span id="noteName">大肥鱼</span>已就位，陪你一起啃下这块硬骨头。</div>
+        </div>
+
+        <!-- 伴侣视窗 -->
+        <div class="xiaodian-box" id="xiaodianBox" onclick="interactCompanion()" title="点击互动，点底部徽章可改名">
+          <video class="xiaodian-video" id="xiaodianVideo" autoplay loop muted playsinline src="xiaodian-near.mp4"></video>
+          <div class="xiaodian-badge" onclick="changeName(event)" id="companionBadge" title="点我改名">
+            <span id="badgeName">大肥鱼</span> ✎
+          </div>
+        </div>
+      </div>
+
+      <!-- 对话气泡 -->
+      <div class="xiaodian-dialogue" id="xiaodianMsg">
+        我在呢，今天想先攻哪一小步？大肥鱼陪你。
+      </div>
+
+      <!-- 实时计时器 -->
+      <div class="hero-timer-display" id="timerBox">
+        <div class="timer-digits" id="timerDigits">40:00</div>
+        <div class="timer-hint" id="timerHint">⚡ 大肥鱼正在身旁为你守护 · 随时按 ✕ 保留进度</div>
+      </div>
+
+      <!-- 操作按钮 -->
+      <div class="hero-actions" id="heroActions">
+        <button class="btn btn-focus" onclick="startFocus(40)">
+          <span>▶</span> 开始专注 (40m)
+        </button>
+        <button class="btn btn-micro" onclick="startFocus(5)">
+          <span>🌱</span> 先做5分钟 (微破冰)
+        </button>
+      </div>
+    </div>
+
+    <!-- 2. 副任务收纳区 -->
+    <div class="drawer-section">
+      <div class="drawer-header" onclick="toggleDrawer()">
+        <span class="drawer-title">
+          <span>📥 副任务与灵感仓</span>
+          <span class="drawer-counter" id="taskCount">4</span>
+        </span>
+        <span style="font-size: 11px; color: var(--text-muted);" id="drawerArrow">收纳中 ▼</span>
+      </div>
+
+      <div class="task-list" id="taskList">
+        <div class="task-item">
+          <span class="task-title">3D 模型对话交互探索</span>
+          <div class="task-actions">
+            <button class="btn-pin" onclick="swapHero('3D 模型对话交互探索', '⚡ #创意探索 · 今日主角', '探索 3D 模型 + 对话交互原型链路', '这个好有趣！{NAME}帮你记下每一个新想法。')">⭐ 设为主任务</button>
+            <button class="btn-play-mini" onclick="startFocus(25)">▶ 25m</button>
+          </div>
+        </div>
+
+        <div class="task-item">
+          <span class="task-title">背英语单词</span>
+          <div class="task-actions">
+            <button class="btn-pin" onclick="swapHero('背英语单词', '📖 #习惯维持 · 今日主角', '核心词汇 30 个，快速过一遍', '英语单词咱们每天瞄一眼就算达标，完全不累！')">⭐ 设为主任务</button>
+            <button class="btn-play-mini" onclick="startFocus(20)">▶ 20m</button>
+          </div>
+        </div>
+
+        <div class="task-item">
+          <span class="task-title">看论文</span>
+          <div class="task-actions">
+            <button class="btn-pin" onclick="swapHero('看论文', '🔬 #前沿输入 · 今日主角', '挑一篇感兴趣的摘要和方法论', '挑篇顺眼的看看就行，{NAME}给你倒杯温水～')">⭐ 设为主任务</button>
+            <button class="btn-play-mini" onclick="startFocus(30)">▶ 30m</button>
+          </div>
+        </div>
+
+        <div class="task-item">
+          <span class="task-title">psyrene 社区调研</span>
+          <div class="task-actions">
+            <button class="btn-pin" onclick="swapHero('psyrene 社区调研', '👥 #项目推进 · 今日主角', '摸清社区核心诉求，记录 3 条洞察', '社区的事情不着急，咱们一起理理头绪。')">⭐ 设为主任务</button>
+            <button class="btn-play-mini" onclick="startFocus(25)">▶ 25m</button>
+          </div>
+        </div>
+      </div>
+
+      <div class="quick-add">
+        <input type="text" class="quick-input" placeholder="+ 记一个灵感或琐事 (按回车丢进仓里，不排时间，绝不催你)" />
+      </div>
+    </div>
+
+    <!-- 3. 正向战报 -->
+    <div class="wins-section">
+      <span>🎉 今日战报：<span id="winName">大肥鱼</span>为你点赞！已击倒 1 个强敌</span>
+      <span class="wins-detail">已完成：物流作业 (21:35)</span>
+    </div>
+  </div>
+
+  <script>
+    let timerInterval = null;
+    let secondsLeft = 0;
+    let companionName = localStorage.getItem('dsh_companion_name') || '大肥鱼';
+
+    function applyCompanionName(name) {
+      companionName = name;
+      localStorage.setItem('dsh_companion_name', name);
+      document.getElementById('badgeName').innerText = name;
+      document.getElementById('noteName').innerText = name;
+      document.getElementById('winName').innerText = name;
+      document.getElementById('xiaodianMsg').innerText = `我在呢，今天想先攻哪一小步？${name}陪你。`;
+    }
+
+    applyCompanionName(companionName);
+
+    function changeName(e) {
+      e.stopPropagation();
+      const newName = prompt('输入你喜欢的伴工名字：', companionName);
+      if (newName && newName.trim() !== '') {
+        applyCompanionName(newName.trim());
+      }
+    }
+
+    function interactCompanion() {
+      const box = document.getElementById('xiaodianBox');
+      box.style.transform = 'scale(1.15) translateY(-4px)';
+      const quotes = [
+        `我在呢，你慢慢说。`,
+        `今天想先攻哪一小步？${companionName}陪你。`,
+        `累了就停下歇会儿，进度都在呢，不用逼自己。`,
+        `坐下来翻开书，你就已经超级棒了！`
+      ];
+      const randQuote = quotes[Math.floor(Math.random() * quotes.length)];
+      document.getElementById('xiaodianMsg').innerText = randQuote;
+      setTimeout(() => box.style.transform = '', 300);
+    }
+
+    function startFocus(minutes) {
+      clearInterval(timerInterval);
+      secondsLeft = minutes * 60;
+      document.getElementById('timerBox').style.display = 'flex';
+
+      if (minutes === 5) {
+        document.getElementById('xiaodianMsg').innerText = `就先看 5 分钟！${companionName}在这陪着你，看不下去随时关掉～`;
+        document.getElementById('timerHint').innerText = "🌱 微启动模式：只做 5 分钟，无任何压力";
+      } else {
+        document.getElementById('xiaodianMsg').innerText = `进入深度心流啦，外面吵吵闹闹的都交给${companionName}挡着！`;
+        document.getElementById('timerHint').innerText = `⚡ ${companionName}正在身旁为你守护 · 随时按 ✕ 保留进度`;
+      }
+
+      updateTimerDisplay();
+      
+      document.getElementById('heroActions').innerHTML = `
+        <button class="btn btn-focus" style="background:#2da44e" onclick="markDone()">✓ 搞定拿下！</button>
+        <button class="btn btn-micro" style="color:var(--text-muted); border-color:rgba(255,255,255,0.2)" onclick="pauseTimer()">⏸ 歇会儿再做</button>
+      `;
+
+      timerInterval = setInterval(() => {
+        if (secondsLeft > 0) {
+          secondsLeft--;
+          updateTimerDisplay();
+        } else {
+          clearInterval(timerInterval);
+          markDone();
+        }
+      }, 1000);
+    }
+
+    function updateTimerDisplay() {
+      const m = Math.floor(secondsLeft / 60);
+      const s = secondsLeft % 60;
+      document.getElementById('timerDigits').innerText = 
+        String(m).padStart(2, '0') + ':' + String(s).padStart(2, '0');
+    }
+
+    function pauseTimer() {
+      clearInterval(timerInterval);
+      document.getElementById('xiaodianMsg').innerText = "进度帮你封存好啦，放心去喝口水/伸个懒腰，醒了继续～";
+      document.getElementById('timerHint').innerText = "⏸ 已安全暂停：进度完好无损，随时点开继续";
+      document.getElementById('heroActions').innerHTML = `
+        <button class="btn btn-focus" onclick="startFocus(Math.ceil(secondsLeft / 60))">▶ 继续专注</button>
+        <button class="btn btn-micro" onclick="resetHero()">⏹ 结束收工</button>
+      `;
+    }
+
+    function markDone() {
+      clearInterval(timerInterval);
+      document.getElementById('timerDigits').innerText = "搞定！🎉";
+      document.getElementById('xiaodianMsg').innerText = `哇！真的太厉害了！${companionName}为你疯狂鼓掌～又跨出了一大步！`;
+      setTimeout(() => {
+        alert(`🎉 击倒成功！${companionName}已为你记入今日战报，太棒啦！`);
+        resetHero();
+      }, 1200);
+    }
+
+    function resetHero() {
+      clearInterval(timerInterval);
+      document.getElementById('timerBox').style.display = 'none';
+      document.getElementById('xiaodianMsg').innerText = `我在呢，今天想先攻哪一小步？${companionName}陪你。`;
+      document.getElementById('heroActions').innerHTML = `
+        <button class="btn btn-focus" onclick="startFocus(40)"><span>▶</span> 开始专注 (40m)</button>
+        <button class="btn btn-micro" onclick="startFocus(5)"><span>🌱</span> 先做5分钟 (微破冰)</button>
+      `;
+    }
+
+    function swapHero(title, tag, note, msg) {
+      document.getElementById('heroTitle').innerText = title;
+      document.getElementById('heroTag').innerText = tag;
+      document.getElementById('heroNote').innerText = note;
+      const formattedMsg = (msg || "切换好啦，今天咱们攻这个！").replace('{NAME}', companionName);
+      document.getElementById('xiaodianMsg').innerText = formattedMsg;
+      resetHero();
+    }
+
+    function toggleDrawer() {
+      const list = document.getElementById('taskList');
+      const arrow = document.getElementById('drawerArrow');
+      if (list.style.display === 'none') {
+        list.style.display = 'flex';
+        arrow.innerText = '收起 ▲';
+      } else {
+        list.style.display = 'none';
+        arrow.innerText = '展开 ▼';
+      }
+    }
+  </script>
+</body>
+</html>

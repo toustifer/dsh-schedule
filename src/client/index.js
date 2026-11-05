@@ -591,7 +591,7 @@ function apply(ctx) {
       title: '点击互动，点底部徽章可改名',
     },
       React.createElement('video', {
-        src: '/api/dailytask/companion-video',
+        src: typeof COMPANION_VIDEO_SRC !== 'undefined' ? COMPANION_VIDEO_SRC : '/api/dailytask/companion-video',
         autoPlay: true,
         loop: true,
         muted: true,
