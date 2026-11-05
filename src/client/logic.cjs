@@ -1116,6 +1116,53 @@ function goalStatusMeta(s) {
   return GOAL_STATUS_META[s] || GOAL_STATUS_META.active
 }
 
+/** ---- Focus Shield (ADHD 专注盾牌 & 伴工) 纯逻辑 ---- */
+const DEFAULT_COMPANION_NAME = '大肥鱼'
+
+function normalizeCompanionName(name) {
+  if (typeof name !== 'string') return DEFAULT_COMPANION_NAME
+  const trimmed = name.trim()
+  return trimmed !== '' ? trimmed : DEFAULT_COMPANION_NAME
+}
+
+function formatCompanionDialogue(template, name) {
+  const actualName = normalizeCompanionName(name)
+  if (typeof template !== 'string') return ''
+  return template.replace(/\{NAME\}|\$\{name\}/g, actualName)
+}
+
+function pickDailyHighlight(items, doneMap, today, explicitHighlightId) {
+  if (!Array.isArray(items) || items.length === 0) return null
+  const dMap = doneMap !== null && typeof doneMap === 'object' ? doneMap : {}
+  const isDone = (item) => {
+    const idDone = dMap[item.id]
+    if (!idDone) return false
+    return Boolean(idDone[today] || idDone[item.date])
+  }
+
+  // 1. 若用户显式指定了主角, 且该任务在列表中且尚未完成, 优先沿用
+  if (explicitHighlightId) {
+    const found = items.find((it) => it && it.id === explicitHighlightId)
+    if (found && !isDone(found)) return found
+  }
+
+  // 2. 否则从所有未完成任务中, 优先挑 q1 (重要紧急) > q2 (重要不紧急) > 其它
+  const unDone = items.filter((it) => it && !isDone(it))
+  if (unDone.length === 0) return null
+
+  const qPriority = { q1: 1, q2: 2, q3: 3, q4: 4 }
+  const sorted = unDone.slice().sort((a, b) => {
+    const pa = qPriority[a.quadrant] || 5
+    const pb = qPriority[b.quadrant] || 5
+    if (pa !== pb) return pa - pb
+    const ha = a.startTime ? 0 : 1
+    const hb = b.startTime ? 0 : 1
+    return ha - hb
+  })
+
+  return sorted[0] || null
+}
+
 if (typeof window === 'undefined' && typeof module !== 'undefined' && module.exports !== undefined) {
   module.exports = {
     pad, fmt, todayStr, dateOf, isoDay, addDays, mondayOf, WEEKDAY_NAMES,
@@ -1126,5 +1173,6 @@ if (typeof window === 'undefined' && typeof module !== 'undefined' && module.exp
     timeRulerShift, timeRulerToMinutes,
     goalProgressOf, formatGoalMetric, goalHorizonMeta, goalStatusMeta,
     GOAL_HORIZON_META, GOAL_METRIC_LABEL, GOAL_STATUS_META,
+    DEFAULT_COMPANION_NAME, normalizeCompanionName, formatCompanionDialogue, pickDailyHighlight,
   }
 }
