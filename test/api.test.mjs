@@ -224,22 +224,23 @@ test('batch can drive doc_patch too', async () => {
 
 // ---------- 宿主契约 ----------
 
-test('host exposes 14 tools and the generic content routes', () => {
+test('host exposes 15 tools and the generic content routes', () => {
   const host = readFileSync(new URL('lib/index.js', root), 'utf8')
   // 派发表在存储层,不在宿主层
   const storeCode = readFileSync(new URL('lib/store.js', root), 'utf8')
   const tools = [...host.matchAll(/'dailytask_[a-z_]+'/g)].map((m) => m[0].slice(1, -1))
-  assert.equal(tools.length, 14, '工具总数应为 14')
-  for (const t of ['dailytask_batch', 'dailytask_doc_get', 'dailytask_doc_patch']) {
+  assert.equal(tools.length, 15, '工具总数应为 15')
+  for (const t of ['dailytask_batch', 'dailytask_doc_get', 'dailytask_doc_patch', 'dailytask_add_resource']) {
     assert.ok(tools.includes(t), `应注册 ${t}`)
   }
   const routes = [...host.matchAll(/route\('([^']+)'/g)].map((m) => m[1])
-  for (const r of ['/batch', '/doc-get', '/doc-patch']) {
+  for (const r of ['/batch', '/doc-get', '/doc-patch', '/open-resource']) {
     assert.ok(routes.includes(r), `应暴露 ${r}`)
   }
-  // 全部 10 种批量 op 都要在 store 的派发表里
+  // 全部批量 op 都要在 store 的派发表里
   for (const op of ['add', 'update', 'set_done', 'remove', 'link_session',
-                    'goal_add', 'goal_update', 'goal_remove', 'link_goal', 'doc_patch']) {
+                    'goal_add', 'goal_update', 'goal_remove', 'link_goal',
+                    'add_resource', 'remove_resource', 'doc_patch']) {
     assert.ok(storeCode.includes(`case '${op}':`), `批量派发应支持 ${op}`)
   }
 })

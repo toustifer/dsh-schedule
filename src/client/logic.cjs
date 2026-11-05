@@ -1163,6 +1163,63 @@ function pickDailyHighlight(items, doneMap, today, explicitHighlightId) {
   return sorted[0] || null
 }
 
+/** ---- 资源关联与推导逻辑 ---- */
+function inferResourceIcon(uri) {
+  if (typeof uri !== 'string') return '🔗'
+  const u = uri.toLowerCase()
+  if (u.indexOf('bilibili.com') !== -1 || u.indexOf('youtube.com') !== -1 || u.endsWith('.mp4') || u.endsWith('.mkv')) return '📺'
+  if (u.endsWith('.ppt') || u.endsWith('.pptx')) return '📊'
+  if (u.endsWith('.pdf')) return '📄'
+  if (u.endsWith('.doc') || u.endsWith('.docx') || u.endsWith('.md') || u.endsWith('.txt')) return '📝'
+  if (u.startsWith('http://') || u.startsWith('https://')) return '🌐'
+  return '📁'
+}
+
+function inferResourceTitle(uri, title) {
+  if (typeof title === 'string' && title.trim()) return title.trim()
+  if (typeof uri !== 'string' || !uri.trim()) return '未命名资料'
+  const cleanUri = uri.trim()
+  try {
+    if (cleanUri.startsWith('http://') || cleanUri.startsWith('https://')) {
+      const parsed = new URL(cleanUri)
+      if (parsed.hostname.indexOf('bilibili.com') !== -1) {
+        const pMatch = cleanUri.match(/[?&]p=(\d+)/)
+        const pStr = pMatch ? ' (P' + pMatch[1] + ')' : ''
+        return 'B站网课' + pStr
+      }
+      return parsed.hostname.replace(/^www\./, '')
+    }
+  } catch (e) {}
+  const parts = cleanUri.split(/[/\\]/)
+  const last = parts[parts.length - 1]
+  return last || cleanUri
+}
+
+function normalizeResourceItem(raw) {
+  if (!raw) return null
+  if (typeof raw === 'string') {
+    const uri = raw.trim()
+    if (!uri) return null
+    return { title: inferResourceTitle(uri, ''), uri }
+  }
+  if (typeof raw === 'object' && typeof raw.uri === 'string' && raw.uri.trim()) {
+    const uri = raw.uri.trim()
+    const title = inferResourceTitle(uri, raw.title)
+    return { title, uri }
+  }
+  return null
+}
+
+function normalizeResourceList(rawList) {
+  if (!Array.isArray(rawList)) return []
+  const res = []
+  for (let i = 0; i < rawList.length; i++) {
+    const norm = normalizeResourceItem(rawList[i])
+    if (norm) res.push(norm)
+  }
+  return res
+}
+
 if (typeof window === 'undefined' && typeof module !== 'undefined' && module.exports !== undefined) {
   module.exports = {
     pad, fmt, todayStr, dateOf, isoDay, addDays, mondayOf, WEEKDAY_NAMES,
@@ -1174,5 +1231,6 @@ if (typeof window === 'undefined' && typeof module !== 'undefined' && module.exp
     goalProgressOf, formatGoalMetric, goalHorizonMeta, goalStatusMeta,
     GOAL_HORIZON_META, GOAL_METRIC_LABEL, GOAL_STATUS_META,
     DEFAULT_COMPANION_NAME, normalizeCompanionName, formatCompanionDialogue, pickDailyHighlight,
+    inferResourceIcon, inferResourceTitle, normalizeResourceItem, normalizeResourceList,
   }
 }

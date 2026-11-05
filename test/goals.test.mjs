@@ -216,7 +216,7 @@ test('legacy data files without goals load as an empty goal list', async () => {
 test('host registers the goal tools and HTTP data plane', () => {
   const host = readFileSync(new URL('lib/index.js', root), 'utf8')
   const tools = [...host.matchAll(/'dailytask_[a-z_]+'/g)].map((m) => m[0].slice(1, -1))
-  assert.equal(tools.length, 14, '工具总数应为 14(6 日程 + 5 目标 + 3 通用)')
+  assert.equal(tools.length, 15, '工具总数应为 15(7 日程 + 5 目标 + 3 通用)')
   for (const t of ['dailytask_goal_add', 'dailytask_goal_list', 'dailytask_goal_update',
                    'dailytask_goal_delete', 'dailytask_link_goal']) {
     assert.ok(tools.includes(t), `应注册 ${t}`)

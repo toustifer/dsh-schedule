@@ -211,6 +211,8 @@ function normalizeStoredItem(raw) {
   if (!Array.isArray(item.weekdays)) item.weekdays = []
   if (!Array.isArray(item.linkedSessions)) item.linkedSessions = []
   if (!Array.isArray(item.rolloverDates)) item.rolloverDates = []
+  if (!Array.isArray(item.resources)) item.resources = []
+  else item.resources = item.resources.filter((r) => r && typeof r.uri === 'string' && r.uri.trim())
   if (!item.quadrant) item.quadrant = 'q2'
   if (typeof item.time !== 'string') item.time = ''
   if (!item.startTime && item.time) {
@@ -394,6 +396,9 @@ export function normalizeItem(args, now = Date.now(), today = localDateStr()) {
     quadrant,
     goalId: pickGoalId(args),
     note: typeof args.note === 'string' ? args.note : '',
+    resources: Array.isArray(args.resources)
+      ? args.resources.map((r) => typeof r === 'string' ? { title: r, uri: r } : r).filter((r) => r && typeof r.uri === 'string' && r.uri.trim())
+      : [],
     linkedSessions: [],
     carryOver,
     rolloverDates: [],
@@ -639,6 +644,7 @@ export class ScheduleStore {
         startTime: i.startTime,
         endTime: i.endTime,
         note: i.note,
+        resources: Array.isArray(i.resources) ? i.resources : [],
         linkedSessions: i.linkedSessions,
         carryOver: i.carryOver === true,
         rolloverDates: i.rolloverDates,
@@ -702,6 +708,9 @@ export class ScheduleStore {
         item.goalId = typeof gid === 'string' && gid.trim() !== '' ? gid.trim() : null
       }
       if (typeof patch.note === 'string') item.note = patch.note
+      if (Array.isArray(patch.resources)) {
+        item.resources = patch.resources.map((r) => typeof r === 'string' ? { title: r, uri: r } : r).filter((r) => r && typeof r.uri === 'string' && r.uri.trim())
+      }
       const carryArg = patch.carryOver !== undefined ? patch.carryOver : patch.carry_over
       if (carryArg !== undefined) item.carryOver = item.recurring === 'once' && carryArg === true
       else if (item.recurring !== 'once') item.carryOver = false
@@ -884,11 +893,19 @@ export class ScheduleStore {
         const gid = op.goal_id !== undefined ? op.goal_id : op.goalId
         return this.linkGoal(op.id, gid === undefined ? '' : gid, today)
       }
+      case 'add_resource': {
+        needId('add_resource')
+        return this.addResource(op.id, { uri: op.uri, title: op.title }, today)
+      }
+      case 'remove_resource': {
+        needId('remove_resource')
+        return this.removeResource(op.id, op.uri, today)
+      }
       case 'doc_patch':
         return this.docPatch(op, today)
       default:
         throw new Error('不认识的操作: ' + op.op
-          + '(可用: add / update / set_done / remove / link_session / goal_add / goal_update / goal_remove / link_goal / doc_patch)')
+          + '(可用: add / update / set_done / remove / link_session / goal_add / goal_update / goal_remove / link_goal / add_resource / remove_resource / doc_patch)')
     }
   }
 
@@ -1025,5 +1042,44 @@ export class ScheduleStore {
         item.linkedSessions = item.linkedSessions.filter((s) => s !== sid)
       }
     }, today).then((result) => ({ ok: true, id, sessionId: sid, link }))
+  }
+
+  addResource(id, resource, today = localDateStr()) {
+    const rawUri = typeof resource === 'string' ? resource : (resource && resource.uri)
+    if (!rawUri || typeof rawUri !== 'string' || !rawUri.trim()) throw new Error('uri 不能为空')
+    const uri = rawUri.trim()
+    const title = typeof resource === 'object' && typeof resource.title === 'string' && resource.title.trim()
+      ? resource.title.trim()
+      : uri
+    return this.mutate((d) => {
+      const item = d.items.find((i) => i.id === id)
+      if (item === undefined) throw new Error('找不到该日程: ' + id)
+      if (!Array.isArray(item.resources)) item.resources = []
+      const existing = item.resources.find((r) => r.uri === uri)
+      if (existing) {
+        if (title && title !== uri) existing.title = title
+      } else {
+        item.resources.push({ title, uri })
+      }
+    }, today).then((result) => ({
+      ok: true,
+      id,
+      resources: ((result.items.find((i) => i.id === id) || {}).resources || []).slice()
+    }))
+  }
+
+  removeResource(id, uri, today = localDateStr()) {
+    if (!uri || typeof uri !== 'string') throw new Error('uri 不能为空')
+    const targetUri = uri.trim()
+    return this.mutate((d) => {
+      const item = d.items.find((i) => i.id === id)
+      if (item === undefined) throw new Error('找不到该日程: ' + id)
+      if (!Array.isArray(item.resources)) item.resources = []
+      item.resources = item.resources.filter((r) => r.uri !== targetUri)
+    }, today).then((result) => ({
+      ok: true,
+      id,
+      resources: ((result.items.find((i) => i.id === id) || {}).resources || []).slice()
+    }))
   }
 }

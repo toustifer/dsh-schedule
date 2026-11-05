@@ -17,6 +17,7 @@
  */
 
 import { createReadStream, existsSync, statSync } from 'node:fs'
+import { exec } from 'node:child_process'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { defineTool } from '@deepseek-ai/dsh-tools'
@@ -58,6 +59,7 @@ export function apply(ctx) {
       quadrant: { type: 'string', description: '四象限优先级: q1(重要紧急)/q2(重要不紧急)/q3(紧急不重要)/q4(不重要不紧急)' },
       goal_id: { type: 'string', description: '可选:归属的长期目标 id(用 dailytask_goal_list 查)' },
       note: { type: 'string', description: '可选备注' },
+      resources: { type: 'array', description: '可选:关联的资料清单(如 B站网课链接、本地课件 PPT/PDF 路径)，每项可为 URL/路径字符串或 {title, uri} 对象' },
       carry_over: { type: 'boolean', description: '仅 once 生效:未完成自动顺延到当天(默认 false)' },
     },
     async (args) => store.addItem(args === null ? {} : args),
@@ -108,6 +110,7 @@ export function apply(ctx) {
       quadrant: { type: 'string', description: '四象限优先级: q1(重要紧急)/q2(重要不紧急)/q3(紧急不重要)/q4(不重要不紧急)' },
       goal_id: { type: 'string', description: '归属的长期目标 id;传空串表示解除归属' },
       note: { type: 'string', description: '备注' },
+      resources: { type: 'array', description: '新关联资料清单(如 B站网课、课件路径)' },
       carry_over: { type: 'boolean', description: '仅 once 生效:未完成自动顺延(默认 false)' },
     },
     async (args) => {
@@ -139,6 +142,20 @@ export function apply(ctx) {
       if (exec === null || exec === undefined || exec.agent === undefined) throw new Error('需要会话上下文')
       if (args === null || typeof args !== 'object') throw new Error('参数无效')
       return store.linkSession(String(args.id), exec.agent.id, args.link !== false)
+    },
+  ))
+
+  ctx.tools.register(makeTool(
+    'dailytask_add_resource',
+    '为一条日程追加一个关联资料(网课链接、B站视频、课件 PPT/PDF 或本地文件路径)。关联后在日程面板中呈现直通药丸胶囊，用户点一下即可直接打开。',
+    {
+      id: { type: 'string', required: true, description: '日程 id' },
+      uri: { type: 'string', required: true, description: '资料网址(如 https://www.bilibili.com/video/...)或本地文件路径(如 D:\\courses\\physics.pptx)' },
+      title: { type: 'string', description: '可选资料显示名称(如「大学物理第5讲」);缺省时自动提取文件名或网站域名' },
+    },
+    async (args) => {
+      if (args === null || typeof args !== 'object') throw new Error('参数无效')
+      return store.addResource(String(args.id), { uri: args.uri, title: args.title })
     },
   ))
 
@@ -453,6 +470,43 @@ export function apply(ctx) {
         'cache-control': 'public, max-age=86400',
       })
       createReadStream(videoPath).pipe(res)
+    })
+
+    // ---- 打开关联资料(网页 / 本地文件) ----
+    route('/open-resource', async (req, res) => {
+      const body = await readBody(req)
+      const rawUri = typeof body.uri === 'string' ? body.uri.trim() : ''
+      if (!rawUri) {
+        json(res, { error: 'uri 不能为空' }, 400)
+        return
+      }
+
+      // 1. 网址直接通过系统默认浏览器打开(备用通道)
+      if (rawUri.startsWith('http://') || rawUri.startsWith('https://')) {
+        const cmd = process.platform === 'win32'
+          ? `start "" "${rawUri.replace(/"/g, '""')}"`
+          : (process.platform === 'darwin' ? `open "${rawUri}"` : `xdg-open "${rawUri}"`)
+        exec(cmd, (err) => {
+          if (err) console.warn('[dsh-schedule] open url failed:', err)
+        })
+        json(res, { ok: true, uri: rawUri, type: 'web' })
+        return
+      }
+
+      // 2. 本地文件/目录:通过系统关联程序打开
+      if (!existsSync(rawUri)) {
+        json(res, { error: '找不到该文件: ' + rawUri }, 404)
+        return
+      }
+
+      const cmd = process.platform === 'win32'
+        ? `cmd.exe /c start "" "${rawUri.replace(/"/g, '""')}"`
+        : (process.platform === 'darwin' ? `open "${rawUri}"` : `xdg-open "${rawUri}"`)
+
+      exec(cmd, (err) => {
+        if (err) console.warn('[dsh-schedule] open file failed:', err)
+      })
+      json(res, { ok: true, uri: rawUri, type: 'file' })
     })
   })
 
